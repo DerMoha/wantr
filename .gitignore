@@ -1,0 +1,42 @@
+# General
+.DS_Store
+.env
+.vscode/
+.idea/
+
+# Flutter/Dart
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+.metadata
+build/
+*.iml
+**/*.iml
+
+# Android
+android/.gradle/
+android/local.properties
+android/key.properties
+android/app/google-services.json
+
+# iOS
+ios/.symlinks/
+ios/Flutter/.last_build_id
+ios/Runner/.generated/
+
+# VS Code
+.vscode/
+
+# Firebase
+firebase-debug.log
+firebase-debug.*.log
+.firebase/
+lib/firebase_options.dart
+
+# Other
+*.log
+*.lock
+
+# Windows
+windows/
