@@ -1,0 +1,65 @@
+workflows:
+  ios-altstore:
+    name: iOS Build for AltStore
+    max_build_duration: 60
+    instance_type: mac_mini_m2
+    
+    environment:
+      flutter: stable
+      xcode: latest
+      cocoapods: default
+      groups:
+        - firebase_credentials  # Create this group in Codemagic UI with GOOGLE_SERVICE_INFO_PLIST
+      
+    scripts:
+      - name: Get Flutter packages
+        script: flutter pub get
+        
+      - name: Set up Firebase config
+        script: |
+          if [ -n "$GOOGLE_SERVICE_INFO_PLIST" ]; then
+            echo "Setting up GoogleService-Info.plist from environment variable"
+            echo $GOOGLE_SERVICE_INFO_PLIST | base64 --decode > ios/Runner/GoogleService-Info.plist
+          else
+            echo "Warning: GOOGLE_SERVICE_INFO_PLIST not set. Firebase may not work correctly."
+          fi
+          
+      - name: Set iOS deployment target
+        script: |
+          cd ios
+          # Ensure minimum iOS version for Firebase compatibility
+          sed -i '' 's/IPHONEOS_DEPLOYMENT_TARGET = [0-9]*\.[0-9]*/IPHONEOS_DEPLOYMENT_TARGET = 13.0/g' Runner.xcodeproj/project.pbxproj
+          
+      - name: Install CocoaPods dependencies
+        script: |
+          cd ios
+          pod install --repo-update
+          
+      - name: Build unsigned iOS app
+        script: |
+          # Build for iOS without code signing (for AltStore re-signing)
+          flutter build ios --release --no-codesign
+          
+      - name: Create unsigned IPA
+        script: |
+          # Create Payload directory structure
+          mkdir -p Payload
+          cp -r build/ios/iphoneos/Runner.app Payload/
+          
+          # Create the IPA (just a zip file with .ipa extension)
+          zip -r wantr-unsigned.ipa Payload
+          
+          # Clean up
+          rm -rf Payload
+          
+    artifacts:
+      - wantr-unsigned.ipa
+      - build/ios/iphoneos/Runner.app
+      
+    publishing:
+      email:
+        recipients:
+          - mohammedhamid@hotmail.de  # Update with your email
+        notify:
+          success: true
+          failure: true
