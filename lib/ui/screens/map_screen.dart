@@ -72,6 +72,7 @@ class _MapScreenState extends State<MapScreen> {
                     urlTemplate: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
                     subdomains: const ['a', 'b', 'c', 'd'],
                     userAgentPackageName: 'com.wantr.app',
+                    retinaMode: RetinaMode.isHighDensity(context),
                   ),
                   
                   // OSM Streets - Undiscovered (gray fog)
