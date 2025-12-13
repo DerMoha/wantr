@@ -42,12 +42,33 @@ workflows:
           
       - name: Create unsigned IPA
         script: |
+          set -e  # Exit on any error
+          
+          APP_PATH="build/ios/iphoneos/Runner.app"
+          
+          # Verify the app was built
+          if [ ! -d "$APP_PATH" ]; then
+            echo "ERROR: Runner.app not found at $APP_PATH"
+            ls -la build/ios/iphoneos/ || echo "Directory doesn't exist"
+            exit 1
+          fi
+          
+          echo "Found Runner.app, creating IPA..."
+          
           # Create Payload directory structure
           mkdir -p Payload
-          cp -r build/ios/iphoneos/Runner.app Payload/
+          cp -r "$APP_PATH" Payload/
           
           # Create the IPA (just a zip file with .ipa extension)
           zip -r wantr-unsigned.ipa Payload
+          
+          # Verify IPA was created
+          if [ -f "wantr-unsigned.ipa" ]; then
+            echo "SUCCESS: IPA created - $(ls -lh wantr-unsigned.ipa)"
+          else
+            echo "ERROR: IPA creation failed"
+            exit 1
+          fi
           
           # Clean up
           rm -rf Payload
@@ -59,7 +80,8 @@ workflows:
     publishing:
       email:
         recipients:
-          - mohammedhamid@hotmail.de  # Update with your email
+          - mohammedhamid@hotmail.de
         notify:
           success: true
           failure: true
+

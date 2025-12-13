@@ -1,0 +1,40 @@
+{
+    "name": "Wantr",
+    "identifier": "com.wantr.source",
+    "subtitle": "The Wandering Trader",
+    "description": "Explore your city, discover streets, and build your trading empire. A location-based game where walking reveals the map.",
+    "iconURL": "https://raw.githubusercontent.com/DerMoha/wantr/main/altstore/icon.png",
+    "headerURL": "https://raw.githubusercontent.com/DerMoha/wantr/main/altstore/header.png",
+    "website": "https://github.com/DerMoha/wantr",
+    "tintColor": "#FFD700",
+    "apps": [
+        {
+            "name": "Wantr",
+            "bundleIdentifier": "com.wantr.app",
+            "developerName": "Mohammed Hamid",
+            "subtitle": "Discover streets, build outposts",
+            "localizedDescription": "Wantr is a location-based exploration game where you discover streets as you walk. Watch the fog of war clear as you explore your neighborhood!\n\nFeatures:\n• Real-time GPS tracking\n• OpenStreetMap integration\n• Fog of war discovery\n• Team play with friends\n• Offline support",
+            "iconURL": "https://raw.githubusercontent.com/DerMoha/wantr/main/altstore/icon.png",
+            "tintColor": "#FFD700",
+            "screenshots": [],
+            "versions": [
+                {
+                    "version": "1.0.0",
+                    "date": "2024-12-13",
+                    "localizedDescription": "Initial release:\n• Map exploration with fog of war\n• 15m reveal radius\n• Google Sign-In\n• Team creation and joining\n• OSM street data",
+                    "downloadURL": "https://github.com/DerMoha/wantr/releases/download/v1.0.0/wantr-unsigned.ipa",
+                    "size": 50000000,
+                    "minOSVersion": "13.0"
+                }
+            ],
+            "appPermissions": {
+                "entitlements": [],
+                "privacy": {
+                    "NSLocationWhenInUseUsageDescription": "Wantr uses your location to track which streets you've discovered.",
+                    "NSLocationAlwaysAndWhenInUseUsageDescription": "Wantr uses your location in the background to continue tracking your exploration."
+                }
+            }
+        }
+    ],
+    "news": []
+}

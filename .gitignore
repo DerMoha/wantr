@@ -47,3 +47,7 @@ app.*.map.json
 # Firebase config files (contain API keys)
 /android/app/google-services.json
 /ios/Runner/GoogleService-Info.plist
+
+# iOS build artifacts
+*.ipa
+Runner.app/
