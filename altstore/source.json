@@ -11,6 +11,7 @@
         {
             "name": "Wantr",
             "bundleIdentifier": "com.wantr.app",
+            "marketplaceID": "com.wantr.app",
             "developerName": "Mohammed Hamid",
             "subtitle": "Discover streets, build outposts",
             "localizedDescription": "Wantr is a location-based exploration game where you discover streets as you walk. Watch the fog of war clear as you explore your neighborhood!\n\nFeatures:\n• Real-time GPS tracking\n• OpenStreetMap integration\n• Fog of war discovery\n• Team play with friends\n• Offline support",
