@@ -1,4 +1,4 @@
-package com.wantr.wantr
+package com.wantr.app
 
 import io.flutter.embedding.android.FlutterActivity
 

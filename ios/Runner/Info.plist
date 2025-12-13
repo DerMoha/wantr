@@ -45,5 +45,17 @@
 	<true/>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
+	
+	<!-- Location permissions for geolocator -->
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Wantr needs your location to discover streets and track your wandering progress.</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>Wantr needs background location access to track your street discoveries while exploring.</string>
+	
+	<!-- Background modes for location tracking -->
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>location</string>
+	</array>
 </dict>
 </plist>

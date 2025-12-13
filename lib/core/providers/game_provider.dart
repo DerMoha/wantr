@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math';
 import 'package:flutter/foundation.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:latlong2/latlong.dart';
@@ -6,6 +7,7 @@ import 'package:uuid/uuid.dart';
 
 import '../models/game_state.dart';
 import '../models/discovered_street.dart';
+import '../models/revealed_segment.dart';
 import '../models/outpost.dart';
 import '../models/hive_adapters.dart';
 import '../services/location_service.dart';
@@ -17,12 +19,14 @@ class GameProvider extends ChangeNotifier {
   final OsmStreetService _osmService = OsmStreetService();
   
   GameState? _gameState;
-  final List<DiscoveredStreet> _discoveredStreets = [];
+  final List<DiscoveredStreet> _discoveredStreets = []; // Legacy, kept for compatibility
+  final List<RevealedSegment> _revealedSegments = [];
   final List<Outpost> _outposts = [];
   
   // Hive boxes
   Box<GameState>? _gameStateBox;
   Box<DiscoveredStreet>? _streetBox;
+  Box<RevealedSegment>? _segmentBox;
   Box<Outpost>? _outpostBox;
 
   // Location tracking
@@ -37,16 +41,20 @@ class GameProvider extends ChangeNotifier {
   // Constants
   static const double _minDistanceForNewPoint = 15.0; // meters
   static const double _streetFetchRadiusKm = 2.0; // km
+  static const double _revealRadius = 15.0; // meters - fog of war reveal radius
 
   /// Current game state
   GameState? get gameState => _gameState;
 
-  /// All discovered streets
-  List<DiscoveredStreet> get discoveredStreets => List.unmodifiable(_discoveredStreets);
+  /// All revealed segments (for fog of war display)
+  List<RevealedSegment> get revealedSegments => List.unmodifiable(_revealedSegments);
 
+  /// All discovered streets (legacy, for compatibility)
+  List<DiscoveredStreet> get discoveredStreets => List.unmodifiable(_discoveredStreets);
+  
   /// All outposts
   List<Outpost> get outposts => List.unmodifiable(_outposts);
-
+  
   /// Current location
   LatLng? get currentLocation => _currentLocation;
 
@@ -78,6 +86,7 @@ class GameProvider extends ChangeNotifier {
     // Open boxes (will create if not exists)
     _gameStateBox = await Hive.openBox<GameState>('game_state');
     _streetBox = await Hive.openBox<DiscoveredStreet>('discovered_streets');
+    _segmentBox = await Hive.openBox<RevealedSegment>('revealed_segments');
     _outpostBox = await Hive.openBox<Outpost>('outposts');
 
     // Initialize OSM service
@@ -94,8 +103,12 @@ class GameProvider extends ChangeNotifier {
       _gameState = _gameStateBox!.get('current');
     }
 
-    // Load discovered streets
+    // Load discovered streets (legacy)
     _discoveredStreets.addAll(_streetBox!.values);
+    
+    // Load revealed segments
+    _revealedSegments.addAll(_segmentBox!.values);
+    debugPrint('📍 Loaded ${_revealedSegments.length} revealed segments');
 
     // Load outposts
     _outposts.addAll(_outpostBox!.values);
@@ -178,46 +191,85 @@ class GameProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Check if we've discovered a new street segment using OSM snapping
+  /// Reveal street segments within 30m radius of current location
   void _checkStreetDiscovery(LatLng location) {
-    // Find the nearest OSM street
-    final osmStreet = _osmService.findNearestStreet(location);
+    int newSegments = 0;
     
-    if (osmStreet == null) {
-      // No street nearby, skip
-      return;
+    // Check all cached OSM streets
+    for (final osmStreet in _osmService.cachedStreets) {
+      // Walk through each segment of the street
+      for (int i = 0; i < osmStreet.points.length - 1; i++) {
+        final segmentStart = osmStreet.points[i];
+        final segmentEnd = osmStreet.points[i + 1];
+        
+        // Check if user is within reveal radius of this segment
+        final distanceToSegment = _pointToSegmentDistance(location, segmentStart, segmentEnd);
+        
+        if (distanceToSegment <= _revealRadius) {
+          // This segment should be revealed!
+          final segmentId = '${osmStreet.id}_$i';
+          
+          // Check if already revealed
+          final existing = _revealedSegments.where((s) => s.id == segmentId).firstOrNull;
+          
+          if (existing != null) {
+            // Already revealed, increment walk count
+            existing.recordWalk();
+            existing.save();
+          } else {
+            // New segment revealed!
+            final segment = RevealedSegment(
+              id: segmentId,
+              streetId: osmStreet.id,
+              streetName: osmStreet.name,
+              startLat: segmentStart.latitude,
+              startLng: segmentStart.longitude,
+              endLat: segmentEnd.latitude,
+              endLng: segmentEnd.longitude,
+            );
+            
+            _revealedSegments.add(segment);
+            _segmentBox?.add(segment);
+            newSegments++;
+          }
+        }
+      }
     }
     
-    final streetId = osmStreet.id;
-    
-    // Check if already discovered
-    final existing = _discoveredStreets.where((s) => s.id == streetId).firstOrNull;
-    
-    if (existing != null) {
-      // Already discovered, increment walk count
-      existing.recordWalk();
-      existing.save();
-      debugPrint('🚶 Walked ${osmStreet.name ?? 'unnamed street'} again (${existing.timesWalked}x)');
-    } else {
-      // New discovery!
-      // Use the first and last point of the OSM street for our record
-      final newStreet = DiscoveredStreet(
-        id: streetId,
-        startLat: osmStreet.points.first.latitude,
-        startLng: osmStreet.points.first.longitude,
-        endLat: osmStreet.points.last.latitude,
-        endLng: osmStreet.points.last.longitude,
-        streetName: osmStreet.name,
-      );
-      
-      _discoveredStreets.add(newStreet);
-      _streetBox?.add(newStreet);
-      
-      // Award XP and discovery points
-      _gameState?.recordStreetDiscovery();
-      
-      debugPrint('🗺️ New street discovered: ${osmStreet.name ?? 'unnamed'} (${osmStreet.type})! Total: ${_discoveredStreets.length}');
+    // Award XP for new segments discovered
+    if (newSegments > 0) {
+      _gameState?.addXp(newSegments * 5); // 5 XP per segment
+      _gameState?.discoveryPoints += newSegments;
+      debugPrint('🗺️ Revealed $newSegments new segments! Total: ${_revealedSegments.length}');
     }
+  }
+  
+  /// Calculate distance from a point to a line segment
+  double _pointToSegmentDistance(LatLng point, LatLng segStart, LatLng segEnd) {
+    const distance = Distance();
+    
+    final dx = segEnd.longitude - segStart.longitude;
+    final dy = segEnd.latitude - segStart.latitude;
+    
+    if (dx == 0 && dy == 0) {
+      // Segment is a point
+      return distance.as(LengthUnit.Meter, point, segStart);
+    }
+    
+    // Calculate projection parameter
+    final t = max(0.0, min(1.0,
+      ((point.longitude - segStart.longitude) * dx + 
+       (point.latitude - segStart.latitude) * dy) / 
+      (dx * dx + dy * dy)
+    ));
+    
+    // Find closest point on segment
+    final closestPoint = LatLng(
+      segStart.latitude + t * dy,
+      segStart.longitude + t * dx,
+    );
+    
+    return distance.as(LengthUnit.Meter, point, closestPoint);
   }
 
   /// Build an outpost at the current location

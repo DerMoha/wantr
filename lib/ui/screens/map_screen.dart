@@ -5,7 +5,7 @@ import 'package:provider/provider.dart';
 
 import '../../core/providers/game_provider.dart';
 import '../../core/theme/app_theme.dart';
-import '../../core/models/discovered_street.dart';
+import '../../core/models/revealed_segment.dart';
 import '../../core/services/osm_street_service.dart';
 import '../widgets/resource_bar.dart';
 import '../widgets/map_controls.dart';
@@ -48,7 +48,7 @@ class _MapScreenState extends State<MapScreen> {
         builder: (context, gameProvider, child) {
           final currentLocation = gameProvider.currentLocation;
           final osmStreets = gameProvider.osmService.cachedStreets;
-          final discoveredIds = gameProvider.discoveredStreets.map((s) => s.id).toSet();
+          final revealedSegmentIds = gameProvider.revealedSegments.map((s) => s.id).toSet();
           
           return Stack(
             children: [
@@ -76,24 +76,14 @@ class _MapScreenState extends State<MapScreen> {
                     retinaMode: RetinaMode.isHighDensity(context),
                   ),
                   
-                  // OSM Streets - Undiscovered (gray fog)
+                  // OSM Streets - Undiscovered segments (gray fog)
                   PolylineLayer(
-                    polylines: osmStreets
-                        .where((s) => !discoveredIds.contains(s.id))
-                        .map((street) => Polyline(
-                          points: street.points,
-                          color: WantrTheme.streetGray.withAlpha(150),
-                          strokeWidth: 3.0,
-                        ))
-                        .toList(),
+                    polylines: _buildUndiscoveredPolylines(osmStreets, revealedSegmentIds),
                   ),
                   
-                  // Discovered streets layer (gold/yellow)
+                  // Revealed segments layer (gold/yellow based on walk count)
                   PolylineLayer(
-                    polylines: _buildDiscoveredStreetPolylines(
-                      gameProvider.discoveredStreets,
-                      osmStreets,
-                    ),
+                    polylines: _buildRevealedSegmentPolylines(gameProvider.revealedSegments),
                   ),
                   
                   // Current walk path
@@ -247,34 +237,50 @@ class _MapScreenState extends State<MapScreen> {
     );
   }
 
-  /// Build polylines for discovered streets using OSM geometry
-  List<Polyline> _buildDiscoveredStreetPolylines(
-    List<DiscoveredStreet> discoveredStreets,
+  /// Build polylines for undiscovered street segments (gray fog)
+  List<Polyline> _buildUndiscoveredPolylines(
     List<OsmStreet> osmStreets,
+    Set<String> revealedSegmentIds,
   ) {
-    final osmMap = {for (var s in osmStreets) s.id: s};
+    final polylines = <Polyline>[];
     
-    return discoveredStreets.map((street) {
-      // Get the full OSM geometry for this street
-      final osmStreet = osmMap[street.id];
-      final points = osmStreet?.points ?? street.points;
-      
-      final color = switch (street.state) {
-        StreetState.legendary => WantrTheme.streetLegendary,
-        StreetState.mastered => WantrTheme.streetGold,
-        StreetState.discovered => WantrTheme.streetYellow,
-        StreetState.unexplored => WantrTheme.streetGray,
+    for (final street in osmStreets) {
+      for (int i = 0; i < street.points.length - 1; i++) {
+        final segmentId = '${street.id}_$i';
+        
+        // Only show as gray if this segment hasn't been revealed
+        if (!revealedSegmentIds.contains(segmentId)) {
+          polylines.add(Polyline(
+            points: [street.points[i], street.points[i + 1]],
+            color: WantrTheme.streetGray.withAlpha(100),
+            strokeWidth: 3.0,
+          ));
+        }
+      }
+    }
+    
+    return polylines;
+  }
+  
+  /// Build polylines for revealed segments (gold/yellow based on walk count)
+  List<Polyline> _buildRevealedSegmentPolylines(List<RevealedSegment> segments) {
+    return segments.map((segment) {
+      final color = switch (segment.state) {
+        SegmentState.legendary => WantrTheme.streetLegendary,
+        SegmentState.mastered => WantrTheme.streetGold,
+        SegmentState.discovered => WantrTheme.streetYellow,
+        SegmentState.undiscovered => WantrTheme.streetGray,
       };
       
-      final strokeWidth = switch (street.state) {
-        StreetState.legendary => 6.0,
-        StreetState.mastered => 5.0,
-        StreetState.discovered => 4.0,
-        StreetState.unexplored => 2.0,
+      final strokeWidth = switch (segment.state) {
+        SegmentState.legendary => 6.0,
+        SegmentState.mastered => 5.0,
+        SegmentState.discovered => 4.0,
+        SegmentState.undiscovered => 2.0,
       };
       
       return Polyline(
-        points: points,
+        points: segment.points,
         color: color,
         strokeWidth: strokeWidth,
       );

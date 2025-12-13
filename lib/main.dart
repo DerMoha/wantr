@@ -8,11 +8,19 @@ import 'core/theme/app_theme.dart';
 import 'core/providers/game_provider.dart';
 import 'ui/screens/map_screen.dart';
 
+String? _initError;
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   
-  // Initialize Firebase
-  await Firebase.initializeApp();
+  // Initialize Firebase with error handling
+  try {
+    await Firebase.initializeApp();
+    debugPrint('✅ Firebase initialized');
+  } catch (e) {
+    debugPrint('❌ Firebase init error: $e');
+    _initError = e.toString();
+  }
   
   // Set preferred orientations
   await SystemChrome.setPreferredOrientations([
@@ -29,16 +37,55 @@ void main() async {
   ));
   
   // Initialize Hive
-  await Hive.initFlutter();
+  try {
+    await Hive.initFlutter();
+    debugPrint('✅ Hive initialized');
+  } catch (e) {
+    debugPrint('❌ Hive init error: $e');
+    _initError = (_initError ?? '') + '\nHive: $e';
+  }
   
-  runApp(const WantrApp());
+  runApp(WantrApp(initError: _initError));
 }
 
 class WantrApp extends StatelessWidget {
-  const WantrApp({super.key});
+  final String? initError;
+  
+  const WantrApp({super.key, this.initError});
 
   @override
   Widget build(BuildContext context) {
+    // If there was an init error, show it
+    if (initError != null) {
+      return MaterialApp(
+        home: Scaffold(
+          backgroundColor: WantrTheme.background,
+          body: Center(
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(Icons.error_outline, color: Colors.redAccent, size: 48),
+                  const SizedBox(height: 16),
+                  const Text(
+                    'Initialization Error',
+                    style: TextStyle(color: Colors.white, fontSize: 20),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    initError!,
+                    style: const TextStyle(color: Colors.redAccent),
+                    textAlign: TextAlign.center,
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+    
     return ChangeNotifierProvider(
       create: (_) => GameProvider()..initialize(),
       child: MaterialApp(
