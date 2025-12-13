@@ -9,10 +9,12 @@ import '../models/discovered_street.dart';
 import '../models/outpost.dart';
 import '../models/hive_adapters.dart';
 import '../services/location_service.dart';
+import '../services/osm_street_service.dart';
 
 /// Main game provider - manages all game state and logic
 class GameProvider extends ChangeNotifier {
   final LocationService _locationService = LocationService();
+  final OsmStreetService _osmService = OsmStreetService();
   
   GameState? _gameState;
   final List<DiscoveredStreet> _discoveredStreets = [];
@@ -27,9 +29,14 @@ class GameProvider extends ChangeNotifier {
   StreamSubscription? _locationSubscription;
   LatLng? _currentLocation;
   final List<LatLng> _currentWalkPath = [];
+  
+  // OSM loading state
+  bool _isLoadingStreets = false;
+  String? _osmError;
 
   // Constants
   static const double _minDistanceForNewPoint = 15.0; // meters
+  static const double _streetFetchRadiusKm = 2.0; // km
 
   /// Current game state
   GameState? get gameState => _gameState;
@@ -51,6 +58,15 @@ class GameProvider extends ChangeNotifier {
 
   /// Location service for direct access
   LocationService get locationService => _locationService;
+  
+  /// OSM street service for direct access
+  OsmStreetService get osmService => _osmService;
+  
+  /// Whether OSM streets are loading
+  bool get isLoadingStreets => _isLoadingStreets;
+  
+  /// Any OSM loading error
+  String? get osmError => _osmError;
 
   /// Initialize the game provider
   Future<void> initialize() async {
@@ -63,6 +79,9 @@ class GameProvider extends ChangeNotifier {
     _gameStateBox = await Hive.openBox<GameState>('game_state');
     _streetBox = await Hive.openBox<DiscoveredStreet>('discovered_streets');
     _outpostBox = await Hive.openBox<Outpost>('outposts');
+
+    // Initialize OSM service
+    await _osmService.initialize();
 
     // Load or create game state
     if (_gameStateBox!.isEmpty) {
@@ -94,7 +113,33 @@ class GameProvider extends ChangeNotifier {
 
     // Get initial location
     _currentLocation = await _locationService.getCurrentLocation();
+    
+    // Fetch OSM streets for area
+    if (_currentLocation != null) {
+      await _fetchStreetsForArea(_currentLocation!);
+    }
+    
     notifyListeners();
+  }
+  
+  /// Fetch OSM street data for an area
+  Future<void> _fetchStreetsForArea(LatLng center) async {
+    if (_isLoadingStreets) return;
+    
+    _isLoadingStreets = true;
+    _osmError = null;
+    notifyListeners();
+    
+    try {
+      await _osmService.fetchStreetsForArea(center, _streetFetchRadiusKm);
+      debugPrint('📍 Loaded ${_osmService.cachedStreets.length} OSM streets');
+    } catch (e) {
+      _osmError = 'Failed to load streets: $e';
+      debugPrint(_osmError);
+    } finally {
+      _isLoadingStreets = false;
+      notifyListeners();
+    }
   }
 
   /// Stop location tracking
@@ -121,8 +166,8 @@ class GameProvider extends ChangeNotifier {
         _currentWalkPath.add(newLocation);
         _gameState?.addDistance(distance);
         
-        // Check for street discovery
-        _checkStreetDiscovery(previousLocation, newLocation);
+        // Check for street discovery using OSM data
+        _checkStreetDiscovery(newLocation);
         
         _saveGameState();
       }
@@ -133,12 +178,17 @@ class GameProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Check if we've discovered a new street segment
-  void _checkStreetDiscovery(LatLng from, LatLng to) {
-    // Simple implementation: create a new street segment
-    // In production, this would match against real street data from OSM
+  /// Check if we've discovered a new street segment using OSM snapping
+  void _checkStreetDiscovery(LatLng location) {
+    // Find the nearest OSM street
+    final osmStreet = _osmService.findNearestStreet(location);
     
-    final streetId = '${from.latitude.toStringAsFixed(5)}_${from.longitude.toStringAsFixed(5)}_${to.latitude.toStringAsFixed(5)}_${to.longitude.toStringAsFixed(5)}';
+    if (osmStreet == null) {
+      // No street nearby, skip
+      return;
+    }
+    
+    final streetId = osmStreet.id;
     
     // Check if already discovered
     final existing = _discoveredStreets.where((s) => s.id == streetId).firstOrNull;
@@ -147,14 +197,17 @@ class GameProvider extends ChangeNotifier {
       // Already discovered, increment walk count
       existing.recordWalk();
       existing.save();
+      debugPrint('🚶 Walked ${osmStreet.name ?? 'unnamed street'} again (${existing.timesWalked}x)');
     } else {
       // New discovery!
+      // Use the first and last point of the OSM street for our record
       final newStreet = DiscoveredStreet(
         id: streetId,
-        startLat: from.latitude,
-        startLng: from.longitude,
-        endLat: to.latitude,
-        endLng: to.longitude,
+        startLat: osmStreet.points.first.latitude,
+        startLng: osmStreet.points.first.longitude,
+        endLat: osmStreet.points.last.latitude,
+        endLng: osmStreet.points.last.longitude,
+        streetName: osmStreet.name,
       );
       
       _discoveredStreets.add(newStreet);
@@ -163,7 +216,7 @@ class GameProvider extends ChangeNotifier {
       // Award XP and discovery points
       _gameState?.recordStreetDiscovery();
       
-      debugPrint('🗺️ New street discovered! Total: ${_discoveredStreets.length}');
+      debugPrint('🗺️ New street discovered: ${osmStreet.name ?? 'unnamed'} (${osmStreet.type})! Total: ${_discoveredStreets.length}');
     }
   }
 

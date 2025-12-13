@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 import '../../core/providers/game_provider.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/models/discovered_street.dart';
+import '../../core/services/osm_street_service.dart';
 import '../widgets/resource_bar.dart';
 import '../widgets/map_controls.dart';
 import '../widgets/player_stats_panel.dart';
@@ -45,6 +46,8 @@ class _MapScreenState extends State<MapScreen> {
       body: Consumer<GameProvider>(
         builder: (context, gameProvider, child) {
           final currentLocation = gameProvider.currentLocation;
+          final osmStreets = gameProvider.osmService.cachedStreets;
+          final discoveredIds = gameProvider.discoveredStreets.map((s) => s.id).toSet();
           
           return Stack(
             children: [
@@ -71,19 +74,24 @@ class _MapScreenState extends State<MapScreen> {
                     userAgentPackageName: 'com.wantr.app',
                   ),
                   
-                  // Fog of war overlay (undiscovered areas)
-                  // This creates a semi-transparent overlay
-                  ColorFiltered(
-                    colorFilter: ColorFilter.mode(
-                      WantrTheme.undiscovered.withOpacity(0.6),
-                      BlendMode.srcOver,
-                    ),
-                    child: Container(),
+                  // OSM Streets - Undiscovered (gray fog)
+                  PolylineLayer(
+                    polylines: osmStreets
+                        .where((s) => !discoveredIds.contains(s.id))
+                        .map((street) => Polyline(
+                          points: street.points,
+                          color: WantrTheme.streetGray.withAlpha(150),
+                          strokeWidth: 3.0,
+                        ))
+                        .toList(),
                   ),
                   
-                  // Discovered streets layer
+                  // Discovered streets layer (gold/yellow)
                   PolylineLayer(
-                    polylines: _buildStreetPolylines(gameProvider.discoveredStreets),
+                    polylines: _buildDiscoveredStreetPolylines(
+                      gameProvider.discoveredStreets,
+                      osmStreets,
+                    ),
                   ),
                   
                   // Current walk path
@@ -231,8 +239,18 @@ class _MapScreenState extends State<MapScreen> {
     );
   }
 
-  List<Polyline> _buildStreetPolylines(List<DiscoveredStreet> streets) {
-    return streets.map((street) {
+  /// Build polylines for discovered streets using OSM geometry
+  List<Polyline> _buildDiscoveredStreetPolylines(
+    List<DiscoveredStreet> discoveredStreets,
+    List<OsmStreet> osmStreets,
+  ) {
+    final osmMap = {for (var s in osmStreets) s.id: s};
+    
+    return discoveredStreets.map((street) {
+      // Get the full OSM geometry for this street
+      final osmStreet = osmMap[street.id];
+      final points = osmStreet?.points ?? street.points;
+      
       final color = switch (street.state) {
         StreetState.legendary => WantrTheme.streetLegendary,
         StreetState.mastered => WantrTheme.streetGold,
@@ -248,7 +266,7 @@ class _MapScreenState extends State<MapScreen> {
       };
       
       return Polyline(
-        points: street.points,
+        points: points,
         color: color,
         strokeWidth: strokeWidth,
       );
