@@ -10,6 +10,7 @@ import '../../core/services/osm_street_service.dart';
 import '../widgets/resource_bar.dart';
 import '../widgets/map_controls.dart';
 import '../widgets/player_stats_panel.dart';
+import 'account_screen.dart';
 
 /// Main game map screen - shows the map with fog of war
 class MapScreen extends StatefulWidget {
@@ -213,7 +214,13 @@ class _MapScreenState extends State<MapScreen> {
               Positioned(
                 left: 16,
                 bottom: 120,
-                child: _buildStatsToggle(),
+                child: Column(
+                  children: [
+                    _buildAccountButton(),
+                    const SizedBox(height: 8),
+                    _buildStatsToggle(),
+                  ],
+                ),
               ),
               
               // Stats panel (slide in from left)
@@ -272,6 +279,31 @@ class _MapScreenState extends State<MapScreen> {
         strokeWidth: strokeWidth,
       );
     }).toList();
+  }
+
+  Widget _buildAccountButton() {
+    return GestureDetector(
+      onTap: () => Navigator.push(
+        context,
+        MaterialPageRoute(builder: (_) => const AccountScreen()),
+      ),
+      child: Container(
+        width: 48,
+        height: 48,
+        decoration: BoxDecoration(
+          color: WantrTheme.surface,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: WantrTheme.undiscovered,
+            width: 1,
+          ),
+        ),
+        child: const Icon(
+          Icons.person_outline,
+          color: WantrTheme.textPrimary,
+        ),
+      ),
+    );
   }
 
   Widget _buildStatsToggle() {
