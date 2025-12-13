@@ -12,11 +12,15 @@ import '../models/outpost.dart';
 import '../models/hive_adapters.dart';
 import '../services/location_service.dart';
 import '../services/osm_street_service.dart';
+import '../services/auth_service.dart';
+import '../services/cloud_sync_service.dart';
 
 /// Main game provider - manages all game state and logic
 class GameProvider extends ChangeNotifier {
   final LocationService _locationService = LocationService();
   final OsmStreetService _osmService = OsmStreetService();
+  final AuthService _authService = AuthService();
+  late final CloudSyncService _cloudSyncService;
   
   GameState? _gameState;
   final List<DiscoveredStreet> _discoveredStreets = []; // Legacy, kept for compatibility
@@ -75,10 +79,16 @@ class GameProvider extends ChangeNotifier {
   
   /// Any OSM loading error
   String? get osmError => _osmError;
+  
+  /// Auth service for login state
+  AuthService get authService => _authService;
 
   /// Initialize the game provider
   Future<void> initialize() async {
     await Hive.initFlutter();
+    
+    // Initialize cloud sync
+    _cloudSyncService = CloudSyncService(_authService);
     
     // Register Hive adapters
     registerHiveAdapters();
@@ -231,6 +241,9 @@ class GameProvider extends ChangeNotifier {
             _revealedSegments.add(segment);
             _segmentBox?.add(segment);
             newSegments++;
+            
+            // Sync to team cloud (if logged in and in a team)
+            _syncSegmentToCloud(segment);
           }
         }
       }
@@ -242,6 +255,25 @@ class GameProvider extends ChangeNotifier {
       _gameState?.discoveryPoints += newSegments;
       debugPrint('🗺️ Revealed $newSegments new segments! Total: ${_revealedSegments.length}');
     }
+  }
+  
+  /// Sync a segment to cloud (fire and forget)
+  void _syncSegmentToCloud(RevealedSegment segment) {
+    if (!_authService.isLoggedIn) return;
+    
+    // Convert to DiscoveredStreet for cloud sync (uses existing sync logic)
+    final streetForSync = DiscoveredStreet(
+      id: segment.id,
+      startLat: segment.startLat,
+      startLng: segment.startLng,
+      endLat: segment.endLat,
+      endLng: segment.endLng,
+      streetName: segment.streetName,
+    );
+    
+    _cloudSyncService.syncDiscoveredStreet(streetForSync).catchError((e) {
+      debugPrint('☁️ Sync error (will retry): $e');
+    });
   }
   
   /// Calculate distance from a point to a line segment

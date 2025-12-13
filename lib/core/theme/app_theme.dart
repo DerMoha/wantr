@@ -21,9 +21,10 @@ class WantrTheme {
 
   // Street State Colors
   static const Color streetGray = Color(0xFF3D3D5C);
-  static const Color streetYellow = Color(0xFFF4D35E);
-  static const Color streetGold = Color(0xFFFFD700);
-  static const Color streetLegendary = Color(0xFFFF8C00);
+  static const Color streetTeamGreen = Color(0xFF4CAF50);  // Teammate discoveries
+  static const Color streetYellow = Color(0xFFF4D35E);     // My discoveries
+  static const Color streetGold = Color(0xFFFFD700);       // Mastered
+  static const Color streetLegendary = Color(0xFFFF8C00);  // Legendary
 
   static ThemeData get darkTheme {
     return ThemeData(

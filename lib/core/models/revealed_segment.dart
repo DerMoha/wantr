@@ -46,6 +46,10 @@ class RevealedSegment extends HiveObject {
   /// When last walked
   @HiveField(9)
   DateTime lastWalkedAt;
+  
+  /// Whether discovered by current user (true) or teammate (false)
+  @HiveField(10)
+  bool discoveredByMe;
 
   RevealedSegment({
     required this.id,
@@ -56,6 +60,7 @@ class RevealedSegment extends HiveObject {
     required this.endLat,
     required this.endLng,
     this.timesWalked = 1,
+    this.discoveredByMe = true,
     DateTime? firstDiscoveredAt,
     DateTime? lastWalkedAt,
   })  : firstDiscoveredAt = firstDiscoveredAt ?? DateTime.now(),
@@ -77,10 +82,11 @@ class RevealedSegment extends HiveObject {
   /// Points for drawing
   List<LatLng> get points => [startPoint, endPoint];
 
-  /// Increment walk count
+  /// Increment walk count and mark as discovered by me
   void recordWalk() {
     timesWalked++;
     lastWalkedAt = DateTime.now();
+    discoveredByMe = true; // If I walk over teammate's segment, it becomes mine
   }
 
   /// Length of this segment in meters
@@ -92,8 +98,9 @@ class RevealedSegment extends HiveObject {
 
 /// Segment discovery states
 enum SegmentState {
-  undiscovered, // Gray
-  discovered,   // Yellow
-  mastered,     // Gold  
-  legendary,    // Bright gold
+  undiscovered,    // Gray
+  teamDiscovered,  // Green (teammate)
+  discovered,      // Yellow (me)
+  mastered,        // Gold  
+  legendary,       // Bright gold
 }

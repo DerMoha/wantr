@@ -27,13 +27,14 @@ class RevealedSegmentAdapter extends TypeAdapter<RevealedSegment> {
       timesWalked: fields[7] as int,
       firstDiscoveredAt: fields[8] as DateTime,
       lastWalkedAt: fields[9] as DateTime,
+      discoveredByMe: fields[10] as bool? ?? true,
     );
   }
 
   @override
   void write(BinaryWriter writer, RevealedSegment obj) {
     writer
-      ..writeByte(10)
+      ..writeByte(11)
       ..writeByte(0)
       ..write(obj.id)
       ..writeByte(1)
@@ -53,7 +54,9 @@ class RevealedSegmentAdapter extends TypeAdapter<RevealedSegment> {
       ..writeByte(8)
       ..write(obj.firstDiscoveredAt)
       ..writeByte(9)
-      ..write(obj.lastWalkedAt);
+      ..write(obj.lastWalkedAt)
+      ..writeByte(10)
+      ..write(obj.discoveredByMe);
   }
 
   @override

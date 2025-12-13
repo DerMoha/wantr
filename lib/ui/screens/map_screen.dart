@@ -262,22 +262,36 @@ class _MapScreenState extends State<MapScreen> {
     return polylines;
   }
   
-  /// Build polylines for revealed segments (gold/yellow based on walk count)
+  /// Build polylines for revealed segments
+  /// Yellow = my discoveries, Green = teammate discoveries
+  /// Gold/Legendary progression only for my own discoveries
   List<Polyline> _buildRevealedSegmentPolylines(List<RevealedSegment> segments) {
     return segments.map((segment) {
-      final color = switch (segment.state) {
-        SegmentState.legendary => WantrTheme.streetLegendary,
-        SegmentState.mastered => WantrTheme.streetGold,
-        SegmentState.discovered => WantrTheme.streetYellow,
-        SegmentState.undiscovered => WantrTheme.streetGray,
-      };
+      Color color;
+      double strokeWidth;
       
-      final strokeWidth = switch (segment.state) {
-        SegmentState.legendary => 6.0,
-        SegmentState.mastered => 5.0,
-        SegmentState.discovered => 4.0,
-        SegmentState.undiscovered => 2.0,
-      };
+      if (!segment.discoveredByMe) {
+        // Teammate discovery - green
+        color = WantrTheme.streetTeamGreen;
+        strokeWidth = 4.0;
+      } else {
+        // My discovery - yellow/gold progression
+        color = switch (segment.state) {
+          SegmentState.legendary => WantrTheme.streetLegendary,
+          SegmentState.mastered => WantrTheme.streetGold,
+          SegmentState.discovered => WantrTheme.streetYellow,
+          SegmentState.teamDiscovered => WantrTheme.streetTeamGreen,
+          SegmentState.undiscovered => WantrTheme.streetGray,
+        };
+        
+        strokeWidth = switch (segment.state) {
+          SegmentState.legendary => 6.0,
+          SegmentState.mastered => 5.0,
+          SegmentState.discovered => 4.0,
+          SegmentState.teamDiscovered => 4.0,
+          SegmentState.undiscovered => 2.0,
+        };
+      }
       
       return Polyline(
         points: segment.points,
