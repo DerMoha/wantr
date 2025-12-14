@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
@@ -7,10 +8,12 @@ import '../../core/providers/game_provider.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/models/revealed_segment.dart';
 import '../../core/services/osm_street_service.dart';
+import '../../core/services/connectivity_service.dart';
 import '../widgets/resource_bar.dart';
 import '../widgets/map_controls.dart';
 import '../widgets/player_stats_panel.dart';
 import 'account_screen.dart';
+import 'stats_screen.dart';
 
 /// Main game map screen - shows the map with fog of war
 class MapScreen extends StatefulWidget {
@@ -22,13 +25,35 @@ class MapScreen extends StatefulWidget {
 
 class _MapScreenState extends State<MapScreen> {
   final MapController _mapController = MapController();
+  final ConnectivityService _connectivityService = ConnectivityService();
+  StreamSubscription<bool>? _connectivitySubscription;
+  
   bool _isFollowingUser = true;
   bool _showStats = false;
+  bool _isOnline = true;
 
   @override
   void initState() {
     super.initState();
     _initializeLocation();
+    _initializeConnectivity();
+  }
+
+  @override
+  void dispose() {
+    _connectivitySubscription?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _initializeConnectivity() async {
+    await _connectivityService.initialize();
+    _isOnline = _connectivityService.isOnline;
+    
+    _connectivitySubscription = _connectivityService.statusStream.listen((isOnline) {
+      if (mounted) {
+        setState(() => _isOnline = isOnline);
+      }
+    });
   }
 
   Future<void> _initializeLocation() async {
@@ -200,13 +225,15 @@ class _MapScreenState extends State<MapScreen> {
                 ),
               ),
               
-              // Stats panel toggle
+              // Stats panel toggle and navigation
               Positioned(
                 left: 16,
                 bottom: 120,
                 child: Column(
                   children: [
                     _buildAccountButton(),
+                    const SizedBox(height: 8),
+                    _buildStatsButton(),
                     const SizedBox(height: 8),
                     _buildStatsToggle(),
                   ],
@@ -217,8 +244,45 @@ class _MapScreenState extends State<MapScreen> {
               if (_showStats)
                 const Positioned(
                   left: 16,
-                  bottom: 180,
+                  bottom: 200,
                   child: PlayerStatsPanel(),
+                ),
+              
+              // Offline banner
+              if (!_isOnline)
+                Positioned(
+                  top: MediaQuery.of(context).padding.top + 8,
+                  left: 16,
+                  right: 16,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                    decoration: BoxDecoration(
+                      color: Colors.orange.shade800,
+                      borderRadius: BorderRadius.circular(8),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withAlpha(80),
+                          blurRadius: 8,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
+                    ),
+                    child: const Row(
+                      children: [
+                        Icon(Icons.cloud_off, color: Colors.white, size: 20),
+                        SizedBox(width: 12),
+                        Expanded(
+                          child: Text(
+                            'You\'re offline. Discoveries will sync when connection returns.',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 13,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
                 ),
               
               // Tracking indicator
@@ -321,6 +385,31 @@ class _MapScreenState extends State<MapScreen> {
         child: const Icon(
           Icons.person_outline,
           color: WantrTheme.textPrimary,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildStatsButton() {
+    return GestureDetector(
+      onTap: () => Navigator.push(
+        context,
+        MaterialPageRoute(builder: (_) => const StatsScreen()),
+      ),
+      child: Container(
+        width: 48,
+        height: 48,
+        decoration: BoxDecoration(
+          color: WantrTheme.surface,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: WantrTheme.undiscovered,
+            width: 1,
+          ),
+        ),
+        child: const Icon(
+          Icons.insights,
+          color: WantrTheme.discovered,
         ),
       ),
     );
