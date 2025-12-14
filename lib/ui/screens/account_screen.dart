@@ -306,6 +306,7 @@ class _AccountScreenState extends State<AccountScreen> {
   }
 
   Future<void> _signInWithGoogle() async {
+    if (!mounted) return;
     setState(() {
       _isLoading = true;
       _error = null;
@@ -315,15 +316,15 @@ class _AccountScreenState extends State<AccountScreen> {
       await _authService.signInWithGoogle();
       await _loadTeamData();
     } catch (e) {
-      setState(() => _error = 'Sign in failed: $e');
+      if (mounted) setState(() => _error = 'Sign in failed: $e');
     } finally {
-      setState(() => _isLoading = false);
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
   Future<void> _signOut() async {
     await _authService.signOut();
-    setState(() => _teamData = null);
+    if (mounted) setState(() => _teamData = null);
   }
 
   Future<void> _leaveTeam() async {
