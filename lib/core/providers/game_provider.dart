@@ -128,7 +128,32 @@ class GameProvider extends ChangeNotifier {
 
   /// Start location tracking
   Future<void> startTracking() async {
-    await _locationService.startTracking();
+    // Load GPS settings
+    final settingsBox = await Hive.openBox<dynamic>('app_settings');
+    final settings = settingsBox.get('settings');
+    
+    int distanceFilter = 10;
+    Duration interval = const Duration(seconds: 5);
+    
+    if (settings != null) {
+      // Get settings values based on mode index
+      final gpsModeIndex = settings.gpsModeIndex ?? 0;
+      distanceFilter = switch (gpsModeIndex) {
+        1 => 5,  // balanced
+        2 => 3,  // highAccuracy
+        _ => 10, // batterySaver
+      };
+      interval = switch (gpsModeIndex) {
+        1 => const Duration(seconds: 3),
+        2 => const Duration(seconds: 2),
+        _ => const Duration(seconds: 5),
+      };
+    }
+    
+    await _locationService.startTracking(
+      distanceFilter: distanceFilter,
+      interval: interval,
+    );
     
     _locationSubscription = _locationService.locationStream.listen((location) {
       _handleLocationUpdate(location);

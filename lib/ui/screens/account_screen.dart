@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:hive_flutter/hive_flutter.dart';
 
+import '../../core/models/app_settings.dart';
 import '../../core/services/auth_service.dart';
 import '../../core/services/team_service.dart';
 import '../../core/theme/app_theme.dart';
@@ -67,6 +69,11 @@ class _AccountScreenState extends State<AccountScreen> {
                   _buildTeamCard(),
                   const SizedBox(height: 16),
                 ],
+                
+                // Settings section
+                _buildSettingsCard(),
+                
+                const SizedBox(height: 16),
                 
                 // Info card for non-logged in users
                 if (!isLoggedIn)
@@ -302,6 +309,128 @@ class _AccountScreenState extends State<AccountScreen> {
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildSettingsCard() {
+    return FutureBuilder<Box<AppSettings>>(
+      future: Hive.openBox<AppSettings>('app_settings'),
+      builder: (context, snapshot) {
+        if (!snapshot.hasData) {
+          return const SizedBox.shrink();
+        }
+        
+        final box = snapshot.data!;
+        AppSettings settings = box.get('settings') ?? AppSettings();
+        
+        return Container(
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            color: WantrTheme.surface,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: WantrTheme.undiscovered),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Row(
+                children: [
+                  Icon(Icons.settings, color: WantrTheme.discovered),
+                  SizedBox(width: 8),
+                  Text(
+                    'Settings',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: WantrTheme.textPrimary,
+                    ),
+                  ),
+                ],
+              ),
+              
+              const SizedBox(height: 16),
+              
+              const Text(
+                'GPS Update Frequency',
+                style: TextStyle(
+                  fontWeight: FontWeight.w500,
+                  color: WantrTheme.textPrimary,
+                ),
+              ),
+              
+              const SizedBox(height: 8),
+              
+              Text(
+                settings.gpsModeDescription,
+                style: const TextStyle(
+                  color: WantrTheme.textSecondary,
+                  fontSize: 12,
+                ),
+              ),
+              
+              const SizedBox(height: 12),
+              
+              // GPS mode selector
+              Row(
+                children: GpsMode.values.map((mode) {
+                  final isSelected = settings.gpsMode == mode;
+                  final label = switch (mode) {
+                    GpsMode.batterySaver => '🔋 Saver',
+                    GpsMode.balanced => '⚖️ Balanced',
+                    GpsMode.highAccuracy => '🎯 Smooth',
+                  };
+                  
+                  return Expanded(
+                    child: Padding(
+                      padding: EdgeInsets.only(
+                        right: mode != GpsMode.highAccuracy ? 8 : 0,
+                      ),
+                      child: GestureDetector(
+                        onTap: () async {
+                          settings.gpsMode = mode;
+                          await box.put('settings', settings);
+                          setState(() {});
+                        },
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(vertical: 10),
+                          decoration: BoxDecoration(
+                            color: isSelected 
+                                ? WantrTheme.discovered 
+                                : WantrTheme.undiscovered,
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Text(
+                            label,
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                              color: isSelected 
+                                  ? WantrTheme.background 
+                                  : WantrTheme.textSecondary,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  );
+                }).toList(),
+              ),
+              
+              const SizedBox(height: 12),
+              
+              const Text(
+                '⚠️ Higher accuracy drains battery faster. Restart app to apply changes.',
+                style: TextStyle(
+                  color: WantrTheme.textSecondary,
+                  fontSize: 11,
+                  fontStyle: FontStyle.italic,
+                ),
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 

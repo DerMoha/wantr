@@ -93,7 +93,9 @@ class LocationService {
 
   /// Start continuous location tracking
   /// Uses foreground service on Android for background tracking
-  Future<void> startTracking() async {
+  /// [distanceFilter] - meters moved before update (default 10)
+  /// [interval] - time between checks (default 5 seconds)
+  Future<void> startTracking({int distanceFilter = 10, Duration interval = const Duration(seconds: 5)}) async {
     if (_isTracking) return;
 
     final hasPermission = await checkPermissions();
@@ -103,6 +105,7 @@ class LocationService {
     }
 
     _isTracking = true;
+    debugPrint('📍 Started tracking: ${distanceFilter}m filter, ${interval.inSeconds}s interval');
 
     // Platform-specific location settings
     late LocationSettings locationSettings;
@@ -111,9 +114,9 @@ class LocationService {
       // Android: Use foreground service for background tracking
       locationSettings = AndroidSettings(
         accuracy: LocationAccuracy.high,
-        distanceFilter: 10, // meters
+        distanceFilter: distanceFilter,
         forceLocationManager: false,
-        intervalDuration: const Duration(seconds: 5),
+        intervalDuration: interval,
         foregroundNotificationConfig: const ForegroundNotificationConfig(
           notificationText: 'Wantr is tracking your exploration',
           notificationTitle: 'Exploring...',
@@ -125,16 +128,16 @@ class LocationService {
       // iOS: Use Apple settings for background
       locationSettings = AppleSettings(
         accuracy: LocationAccuracy.high,
-        distanceFilter: 10,
+        distanceFilter: distanceFilter,
         activityType: ActivityType.fitness,
         pauseLocationUpdatesAutomatically: false,
         showBackgroundLocationIndicator: true,
       );
     } else {
       // Default for other platforms
-      locationSettings = const LocationSettings(
+      locationSettings = LocationSettings(
         accuracy: LocationAccuracy.high,
-        distanceFilter: 10,
+        distanceFilter: distanceFilter,
       );
     }
 
