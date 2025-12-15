@@ -313,124 +313,179 @@ class _AccountScreenState extends State<AccountScreen> {
   }
 
   Widget _buildSettingsCard() {
-    return FutureBuilder<Box<AppSettings>>(
-      future: Hive.openBox<AppSettings>('app_settings'),
+    // Try to get already-opened box, or open new one
+    Box? settingsBox;
+    try {
+      settingsBox = Hive.box('app_settings');
+    } catch (e) {
+      // Box not open yet, will open it
+    }
+    
+    if (settingsBox != null && settingsBox.isOpen) {
+      return _buildSettingsContent(settingsBox);
+    }
+    
+    return FutureBuilder<Box>(
+      future: Hive.openBox('app_settings'),
       builder: (context, snapshot) {
+        // Show loading indicator while opening box
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return Container(
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              color: WantrTheme.surface,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: WantrTheme.undiscovered),
+            ),
+            child: const Center(
+              child: CircularProgressIndicator(color: WantrTheme.discovered),
+            ),
+          );
+        }
+        
+        // Show error if failed
+        if (snapshot.hasError) {
+          return Container(
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              color: WantrTheme.surface,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: Colors.redAccent),
+            ),
+            child: Text(
+              'Settings error: ${snapshot.error}',
+              style: const TextStyle(color: Colors.redAccent),
+            ),
+          );
+        }
+        
         if (!snapshot.hasData) {
           return const SizedBox.shrink();
         }
         
-        final box = snapshot.data!;
-        AppSettings settings = box.get('settings') ?? AppSettings();
-        
-        return Container(
-          padding: const EdgeInsets.all(20),
-          decoration: BoxDecoration(
-            color: WantrTheme.surface,
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: WantrTheme.undiscovered),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+        return _buildSettingsContent(snapshot.data!);
+      },
+    );
+  }
+  
+  Widget _buildSettingsContent(Box box) {
+    // Get or create settings
+    dynamic rawSettings = box.get('settings');
+    AppSettings settings;
+    
+    if (rawSettings is AppSettings) {
+      settings = rawSettings;
+    } else {
+      settings = AppSettings();
+      box.put('settings', settings);
+    }
+    
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: WantrTheme.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: WantrTheme.undiscovered),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Row(
             children: [
-              const Row(
-                children: [
-                  Icon(Icons.settings, color: WantrTheme.discovered),
-                  SizedBox(width: 8),
-                  Text(
-                    'Settings',
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                      color: WantrTheme.textPrimary,
-                    ),
-                  ),
-                ],
-              ),
-              
-              const SizedBox(height: 16),
-              
-              const Text(
-                'GPS Update Frequency',
-                style: TextStyle(
-                  fontWeight: FontWeight.w500,
-                  color: WantrTheme.textPrimary,
-                ),
-              ),
-              
-              const SizedBox(height: 8),
-              
+              Icon(Icons.settings, color: WantrTheme.discovered),
+              SizedBox(width: 8),
               Text(
-                settings.gpsModeDescription,
-                style: const TextStyle(
-                  color: WantrTheme.textSecondary,
-                  fontSize: 12,
-                ),
-              ),
-              
-              const SizedBox(height: 12),
-              
-              // GPS mode selector
-              Row(
-                children: GpsMode.values.map((mode) {
-                  final isSelected = settings.gpsMode == mode;
-                  final label = switch (mode) {
-                    GpsMode.batterySaver => '🔋 Saver',
-                    GpsMode.balanced => '⚖️ Balanced',
-                    GpsMode.highAccuracy => '🎯 Smooth',
-                  };
-                  
-                  return Expanded(
-                    child: Padding(
-                      padding: EdgeInsets.only(
-                        right: mode != GpsMode.highAccuracy ? 8 : 0,
-                      ),
-                      child: GestureDetector(
-                        onTap: () async {
-                          settings.gpsMode = mode;
-                          await box.put('settings', settings);
-                          setState(() {});
-                        },
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(vertical: 10),
-                          decoration: BoxDecoration(
-                            color: isSelected 
-                                ? WantrTheme.discovered 
-                                : WantrTheme.undiscovered,
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: Text(
-                            label,
-                            textAlign: TextAlign.center,
-                            style: TextStyle(
-                              fontSize: 12,
-                              fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                              color: isSelected 
-                                  ? WantrTheme.background 
-                                  : WantrTheme.textSecondary,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                  );
-                }).toList(),
-              ),
-              
-              const SizedBox(height: 12),
-              
-              const Text(
-                '⚠️ Higher accuracy drains battery faster. Restart app to apply changes.',
+                'Settings',
                 style: TextStyle(
-                  color: WantrTheme.textSecondary,
-                  fontSize: 11,
-                  fontStyle: FontStyle.italic,
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: WantrTheme.textPrimary,
                 ),
               ),
             ],
           ),
-        );
-      },
+          
+          const SizedBox(height: 16),
+          
+          const Text(
+            'GPS Update Frequency',
+            style: TextStyle(
+              fontWeight: FontWeight.w500,
+              color: WantrTheme.textPrimary,
+            ),
+          ),
+          
+          const SizedBox(height: 8),
+          
+          Text(
+            settings.gpsModeDescription,
+            style: const TextStyle(
+              color: WantrTheme.textSecondary,
+              fontSize: 12,
+            ),
+          ),
+          
+          const SizedBox(height: 12),
+          
+          // GPS mode selector
+          Row(
+            children: GpsMode.values.map((mode) {
+              final isSelected = settings.gpsMode == mode;
+              final label = switch (mode) {
+                GpsMode.batterySaver => '🔋 Saver',
+                GpsMode.balanced => '⚖️ Balanced',
+                GpsMode.highAccuracy => '🎯 Smooth',
+              };
+              
+              return Expanded(
+                child: Padding(
+                  padding: EdgeInsets.only(
+                    right: mode != GpsMode.highAccuracy ? 8 : 0,
+                  ),
+                  child: GestureDetector(
+                    onTap: () async {
+                      settings.gpsMode = mode;
+                      await box.put('settings', settings);
+                      setState(() {});
+                    },
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(vertical: 10),
+                      decoration: BoxDecoration(
+                        color: isSelected 
+                            ? WantrTheme.discovered 
+                            : WantrTheme.undiscovered,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Text(
+                        label,
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                          color: isSelected 
+                              ? WantrTheme.background 
+                              : WantrTheme.textSecondary,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              );
+            }).toList(),
+          ),
+          
+          const SizedBox(height: 12),
+          
+          const Text(
+            '⚠️ Higher accuracy drains battery faster. Restart app to apply changes.',
+            style: TextStyle(
+              color: WantrTheme.textSecondary,
+              fontSize: 11,
+              fontStyle: FontStyle.italic,
+            ),
+          ),
+        ],
+      ),
     );
   }
 
