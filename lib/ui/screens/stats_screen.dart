@@ -300,7 +300,7 @@ class StatsScreen extends StatelessWidget {
     required dynamic gameState,
     required int totalSegments,
   }) {
-    final xpToNext = gameState.xpToNextLevel;
+    final xpToNext = gameState.xpForNextLevel;
     final currentXp = gameState.xp % xpToNext;
     final progress = currentXp / xpToNext;
 
