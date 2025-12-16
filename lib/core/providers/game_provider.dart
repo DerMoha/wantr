@@ -233,6 +233,9 @@ class GameProvider extends ChangeNotifier {
   void _handleLocationUpdate(LatLng newLocation) {
     final previousLocation = _currentLocation;
     _currentLocation = newLocation;
+    
+    // Always check for street discovery at current location
+    _checkStreetDiscovery(newLocation);
 
     if (previousLocation != null) {
       final distance = _locationService.calculateDistance(
@@ -240,14 +243,10 @@ class GameProvider extends ChangeNotifier {
         newLocation,
       );
 
-      // Only record if moved significantly
+      // Only record walk path/distance if moved significantly
       if (distance >= _minDistanceForNewPoint) {
         _currentWalkPath.add(newLocation);
         _gameState?.addDistance(distance);
-        
-        // Check for street discovery using OSM data
-        _checkStreetDiscovery(newLocation);
-        
         _saveGameState();
       }
     } else {

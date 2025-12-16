@@ -204,7 +204,11 @@ class _MapScreenState extends State<MapScreen> {
                 bottom: 120,
                 child: MapControls(
                   onCenterPressed: () {
-                    if (currentLocation != null) {
+                    if (_isFollowingUser) {
+                      // Already centered - reset rotation to north
+                      _mapController.rotate(0);
+                    } else if (currentLocation != null) {
+                      // Not centered - center on user
                       _mapController.move(currentLocation, 16.0);
                       setState(() => _isFollowingUser = true);
                     }
