@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:provider/provider.dart';
 
@@ -25,24 +26,40 @@ class _AccountScreenState extends State<AccountScreen> {
   bool _isLoading = false;
   String? _error;
   Map<String, dynamic>? _teamData;
+  String? _customDisplayName;
 
   @override
   void initState() {
     super.initState();
     _teamService = TeamService(_authService);
-    _loadTeamData();
+    _loadUserData();
   }
 
-  Future<void> _loadTeamData() async {
+  Future<void> _loadUserData() async {
     if (!_authService.isLoggedIn) return;
     
+    // Load custom display name from Firestore
+    final userId = _authService.userId;
+    if (userId != null) {
+      final userDoc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(userId)
+          .get();
+      if (userDoc.exists && mounted) {
+        setState(() {
+          _customDisplayName = userDoc.data()?['displayName'];
+        });
+      }
+    }
+    
+    // Load team data
     final teamId = await _authService.getUserTeamId();
     if (teamId != null) {
       final data = await _teamService.getTeamData(teamId);
       if (data != null) {
-        data['id'] = teamId; // Include team ID for leaderboard
+        data['id'] = teamId;
       }
-      setState(() => _teamData = data);
+      if (mounted) setState(() => _teamData = data);
     }
   }
 
@@ -133,19 +150,39 @@ class _AccountScreenState extends State<AccountScreen> {
           
           const SizedBox(height: 16),
           
-          // Name/Status
-          Text(
-            isAnonymous 
-                ? 'Guest Explorer'
-                : isLoggedIn 
-                    ? (user?.displayName ?? 'Wanderer')
-                    : 'Not Logged In',
-            style: const TextStyle(
-              fontSize: 20,
-              fontWeight: FontWeight.bold,
-              color: WantrTheme.textPrimary,
+          // Name/Status with edit button
+          if (isLoggedIn)
+            GestureDetector(
+              onTap: _showEditUsernameDialog,
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    _customDisplayName ?? user?.displayName ?? 'Wanderer',
+                    style: const TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                      color: WantrTheme.textPrimary,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  const Icon(
+                    Icons.edit,
+                    size: 16,
+                    color: WantrTheme.textSecondary,
+                  ),
+                ],
+              ),
+            )
+          else
+            Text(
+              'Not Logged In',
+              style: const TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.bold,
+                color: WantrTheme.textPrimary,
+              ),
             ),
-          ),
           
           if (isAnonymous)
             const Text(
@@ -676,7 +713,7 @@ class _AccountScreenState extends State<AccountScreen> {
 
     try {
       await _authService.signInWithGoogle();
-      await _loadTeamData();
+      await _loadUserData();
     } catch (e) {
       if (mounted) setState(() => _error = 'Sign in failed: $e');
     } finally {
@@ -709,11 +746,69 @@ class _AccountScreenState extends State<AccountScreen> {
 
     try {
       await _authService.linkWithGoogle();
-      await _loadTeamData();
+      await _loadUserData();
     } catch (e) {
       if (mounted) setState(() => _error = 'Link failed: $e');
     } finally {
       if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _showEditUsernameDialog() async {
+    final controller = TextEditingController(
+      text: _customDisplayName ?? _authService.currentUser?.displayName ?? '',
+    );
+    
+    final newName = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: WantrTheme.surface,
+        title: const Text('Edit Username'),
+        content: TextField(
+          controller: controller,
+          decoration: const InputDecoration(
+            hintText: 'Enter your username',
+            border: OutlineInputBorder(),
+          ),
+          autofocus: true,
+          maxLength: 20,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, controller.text.trim()),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: WantrTheme.discovered,
+            ),
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+
+    if (newName != null && newName.isNotEmpty && newName != _customDisplayName) {
+      // Update in Firestore
+      final userId = _authService.userId;
+      if (userId != null) {
+        await FirebaseFirestore.instance
+            .collection('users')
+            .doc(userId)
+            .update({'displayName': newName});
+        
+        setState(() => _customDisplayName = newName);
+        
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Username updated!'),
+              backgroundColor: WantrTheme.discovered,
+            ),
+          );
+        }
+      }
     }
   }
 
@@ -813,7 +908,7 @@ class _AccountScreenState extends State<AccountScreen> {
 
     if (result != null && result.isNotEmpty) {
       await _teamService.createTeam(result);
-      await _loadTeamData();
+      await _loadUserData();
     }
   }
 
@@ -849,7 +944,7 @@ class _AccountScreenState extends State<AccountScreen> {
     if (result != null && result.isNotEmpty) {
       final success = await _teamService.joinTeam(result);
       if (success) {
-        await _loadTeamData();
+        await _loadUserData();
       } else {
         setState(() => _error = 'Could not join team. Check the code and try again.');
       }
