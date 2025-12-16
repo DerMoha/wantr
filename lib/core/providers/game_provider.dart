@@ -116,14 +116,45 @@ class GameProvider extends ChangeNotifier {
     // Load discovered streets (legacy)
     _discoveredStreets.addAll(_streetBox!.values);
     
-    // Load revealed segments
+    // Load revealed segments from local storage
     _revealedSegments.addAll(_segmentBox!.values);
-    debugPrint('📍 Loaded ${_revealedSegments.length} revealed segments');
+    debugPrint('📍 Loaded ${_revealedSegments.length} local revealed segments');
+    
+    // Load team segments if logged in
+    await _loadTeamSegments();
 
     // Load outposts
     _outposts.addAll(_outpostBox!.values);
 
     notifyListeners();
+  }
+  
+  /// Load team segments from cloud and merge with local
+  Future<void> _loadTeamSegments() async {
+    if (!_authService.isLoggedIn) return;
+    
+    try {
+      final teamSegments = await _cloudSyncService!.getTeamRevealedSegments();
+      
+      // Merge team segments with local (team discoveries that aren't in local)
+      int addedCount = 0;
+      for (final teamSegment in teamSegments) {
+        final existingIndex = _revealedSegments.indexWhere((s) => s.id == teamSegment.id);
+        
+        if (existingIndex == -1) {
+          // New segment from team - add it
+          _revealedSegments.add(teamSegment);
+          await _segmentBox!.put(teamSegment.id, teamSegment);
+          addedCount++;
+        }
+      }
+      
+      if (addedCount > 0) {
+        debugPrint('☁️ Loaded $addedCount team segments from cloud');
+      }
+    } catch (e) {
+      debugPrint('⚠️ Error loading team segments: $e');
+    }
   }
 
   /// Start location tracking
@@ -286,17 +317,7 @@ class GameProvider extends ChangeNotifier {
   void _syncSegmentToCloud(RevealedSegment segment) {
     if (!_authService.isLoggedIn) return;
     
-    // Convert to DiscoveredStreet for cloud sync (uses existing sync logic)
-    final streetForSync = DiscoveredStreet(
-      id: segment.id,
-      startLat: segment.startLat,
-      startLng: segment.startLng,
-      endLat: segment.endLat,
-      endLng: segment.endLng,
-      streetName: segment.streetName,
-    );
-    
-    _cloudSyncService.syncDiscoveredStreet(streetForSync).catchError((e) {
+    _cloudSyncService!.syncRevealedSegment(segment).catchError((e) {
       debugPrint('☁️ Sync error (will retry): $e');
     });
   }

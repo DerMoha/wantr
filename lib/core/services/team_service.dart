@@ -151,6 +151,50 @@ class TeamService {
     return doc.data();
   }
 
+  /// Get team member stats for leaderboard
+  Future<List<Map<String, dynamic>>> getTeamMemberStats(String teamId) async {
+    final teamDoc = await _firestore.collection('teams').doc(teamId).get();
+    if (!teamDoc.exists) return [];
+    
+    final members = List<String>.from(teamDoc.data()?['members'] ?? []);
+    
+    // Get segment counts per member
+    final segmentDocs = await _firestore
+        .collection('teams')
+        .doc(teamId)
+        .collection('revealedSegments')
+        .get();
+    
+    // Count segments by discoverer
+    final segmentCounts = <String, int>{};
+    for (final doc in segmentDocs.docs) {
+      final discoveredBy = doc.data()['discoveredBy'] as String?;
+      if (discoveredBy != null) {
+        segmentCounts[discoveredBy] = (segmentCounts[discoveredBy] ?? 0) + 1;
+      }
+    }
+    
+    // Fetch user info for each member
+    final memberStats = <Map<String, dynamic>>[];
+    for (final memberId in members) {
+      final userDoc = await _firestore.collection('users').doc(memberId).get();
+      final userData = userDoc.data() ?? {};
+      
+      memberStats.add({
+        'userId': memberId,
+        'displayName': userData['displayName'] ?? 'Unknown',
+        'photoUrl': userData['photoUrl'],
+        'segments': segmentCounts[memberId] ?? 0,
+        'isCurrentUser': memberId == _authService.userId,
+      });
+    }
+    
+    // Sort by segments (descending)
+    memberStats.sort((a, b) => (b['segments'] as int).compareTo(a['segments'] as int));
+    
+    return memberStats;
+  }
+
   /// Stream team updates
   Stream<DocumentSnapshot<Map<String, dynamic>>> teamStream(String teamId) {
     return _firestore.collection('teams').doc(teamId).snapshots();

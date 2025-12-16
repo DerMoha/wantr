@@ -14,14 +14,65 @@ class AuthService {
   /// Current Firebase user (null if not logged in)
   User? get currentUser => _auth.currentUser;
 
-  /// Whether user is logged in
+  /// Whether user is logged in (including anonymous)
   bool get isLoggedIn => currentUser != null;
+
+  /// Whether user is anonymous (not linked to Google/email)
+  bool get isAnonymous => currentUser?.isAnonymous ?? false;
 
   /// User ID (Firebase UID or null)
   String? get userId => currentUser?.uid;
 
   /// Stream of auth state changes
   Stream<User?> get authStateChanges => _auth.authStateChanges();
+
+  /// Sign in anonymously (for team joining without Google account)
+  Future<UserCredential?> signInAnonymously() async {
+    try {
+      final userCredential = await _auth.signInAnonymously();
+      
+      // Create user document
+      await _createUserDocument(userCredential.user!, displayName: 'Guest Explorer');
+      
+      debugPrint('✅ Signed in anonymously as ${userCredential.user?.uid}');
+      return userCredential;
+    } catch (e) {
+      debugPrint('❌ Anonymous sign-in error: $e');
+      rethrow;
+    }
+  }
+
+  /// Link anonymous account to Google
+  Future<UserCredential?> linkWithGoogle() async {
+    if (!isAnonymous) return null;
+    
+    try {
+      final GoogleSignInAccount? googleUser = await _googleSignIn.signIn();
+      if (googleUser == null) return null;
+
+      final GoogleSignInAuthentication googleAuth = await googleUser.authentication;
+      final credential = GoogleAuthProvider.credential(
+        accessToken: googleAuth.accessToken,
+        idToken: googleAuth.idToken,
+      );
+
+      final userCredential = await currentUser!.linkWithCredential(credential);
+      
+      // Update user document with Google info
+      await _firestore.collection('users').doc(userId).update({
+        'displayName': googleUser.displayName ?? 'Wanderer',
+        'email': googleUser.email,
+        'photoUrl': googleUser.photoUrl,
+        'isAnonymous': false,
+      });
+      
+      debugPrint('✅ Linked account to ${googleUser.displayName}');
+      return userCredential;
+    } catch (e) {
+      debugPrint('❌ Link with Google error: $e');
+      rethrow;
+    }
+  }
 
   /// Sign in with Google
   Future<UserCredential?> signInWithGoogle() async {

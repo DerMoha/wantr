@@ -302,10 +302,21 @@ class _MapScreenState extends State<MapScreen> {
   }
 
   /// Build polylines for undiscovered street segments (gray fog)
+  /// Only renders when zoom level is high enough to prevent performance issues
   List<Polyline> _buildUndiscoveredPolylines(
     List<OsmStreet> osmStreets,
     Set<String> revealedSegmentIds,
   ) {
+    // Don't render undiscovered streets when zoomed out (performance + visual clarity)
+    try {
+      final currentZoom = _mapController.camera.zoom;
+      if (currentZoom < 14) {
+        return [];
+      }
+    } catch (e) {
+      // Map controller not ready yet, default to showing streets
+    }
+    
     final polylines = <Polyline>[];
     
     for (final street in osmStreets) {

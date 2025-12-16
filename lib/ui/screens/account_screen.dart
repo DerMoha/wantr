@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:hive_flutter/hive_flutter.dart';
+import 'package:provider/provider.dart';
 
 import '../../core/models/app_settings.dart';
+import '../../core/providers/game_provider.dart';
 import '../../core/services/auth_service.dart';
+import '../../core/services/cloud_sync_service.dart';
 import '../../core/services/team_service.dart';
 import '../../core/theme/app_theme.dart';
 
@@ -36,6 +39,9 @@ class _AccountScreenState extends State<AccountScreen> {
     final teamId = await _authService.getUserTeamId();
     if (teamId != null) {
       final data = await _teamService.getTeamData(teamId);
+      if (data != null) {
+        data['id'] = teamId; // Include team ID for leaderboard
+      }
       setState(() => _teamData = data);
     }
   }
@@ -98,6 +104,8 @@ class _AccountScreenState extends State<AccountScreen> {
   }
 
   Widget _buildAccountCard(User? user, bool isLoggedIn) {
+    final isAnonymous = _authService.isAnonymous;
+    
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
@@ -110,13 +118,13 @@ class _AccountScreenState extends State<AccountScreen> {
           // Avatar
           CircleAvatar(
             radius: 40,
-            backgroundColor: WantrTheme.discovered,
+            backgroundColor: isAnonymous ? WantrTheme.streetTeamGreen : WantrTheme.discovered,
             backgroundImage: user?.photoURL != null 
                 ? NetworkImage(user!.photoURL!) 
                 : null,
             child: user?.photoURL == null
                 ? Icon(
-                    isLoggedIn ? Icons.person : Icons.person_outline,
+                    isLoggedIn ? (isAnonymous ? Icons.person_outline : Icons.person) : Icons.person_outline,
                     size: 40,
                     color: WantrTheme.background,
                   )
@@ -127,9 +135,11 @@ class _AccountScreenState extends State<AccountScreen> {
           
           // Name/Status
           Text(
-            isLoggedIn 
-                ? (user?.displayName ?? 'Wanderer')
-                : 'Not Logged In',
+            isAnonymous 
+                ? 'Guest Explorer'
+                : isLoggedIn 
+                    ? (user?.displayName ?? 'Wanderer')
+                    : 'Not Logged In',
             style: const TextStyle(
               fontSize: 20,
               fontWeight: FontWeight.bold,
@@ -137,7 +147,16 @@ class _AccountScreenState extends State<AccountScreen> {
             ),
           ),
           
-          if (isLoggedIn && user?.email != null)
+          if (isAnonymous)
+            const Text(
+              'Temporary account - link to Google to save progress',
+              style: TextStyle(
+                color: WantrTheme.textSecondary,
+                fontSize: 12,
+              ),
+              textAlign: TextAlign.center,
+            )
+          else if (isLoggedIn && user?.email != null)
             Text(
               user!.email!,
               style: const TextStyle(
@@ -150,6 +169,32 @@ class _AccountScreenState extends State<AccountScreen> {
           // Login/Logout button
           if (_isLoading)
             const CircularProgressIndicator(color: WantrTheme.discovered)
+          else if (isAnonymous)
+            Column(
+              children: [
+                ElevatedButton.icon(
+                  onPressed: _linkWithGoogle,
+                  icon: const Icon(Icons.link),
+                  label: const Text('Link to Google Account'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: WantrTheme.discovered,
+                    foregroundColor: WantrTheme.background,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 24,
+                      vertical: 12,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                TextButton(
+                  onPressed: _signOut,
+                  child: const Text(
+                    'Sign Out',
+                    style: TextStyle(color: WantrTheme.textSecondary),
+                  ),
+                ),
+              ],
+            )
           else if (isLoggedIn)
             OutlinedButton.icon(
               onPressed: _signOut,
@@ -173,6 +218,15 @@ class _AccountScreenState extends State<AccountScreen> {
                       horizontal: 24,
                       vertical: 12,
                     ),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                OutlinedButton.icon(
+                  onPressed: _continueAsGuest,
+                  icon: const Icon(Icons.person_outline),
+                  label: const Text('Continue as Guest'),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: WantrTheme.textSecondary,
                   ),
                 ),
               ],
@@ -236,9 +290,133 @@ class _AccountScreenState extends State<AccountScreen> {
               style: const TextStyle(color: WantrTheme.textSecondary),
             ),
             const SizedBox(height: 16),
-            TextButton(
-              onPressed: _leaveTeam,
-              child: const Text('Leave Team', style: TextStyle(color: Colors.redAccent)),
+            Row(
+              children: [
+                Expanded(
+                  child: ElevatedButton.icon(
+                    onPressed: _syncDiscoveries,
+                    icon: const Icon(Icons.cloud_upload, size: 18),
+                    label: const Text('Sync Discoveries'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: WantrTheme.streetTeamGreen,
+                      foregroundColor: WantrTheme.background,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                TextButton(
+                  onPressed: _leaveTeam,
+                  child: const Text('Leave', style: TextStyle(color: Colors.redAccent)),
+                ),
+              ],
+            ),
+            
+            const SizedBox(height: 20),
+            const Divider(color: WantrTheme.undiscovered),
+            const SizedBox(height: 12),
+            
+            // Team Leaderboard
+            const Row(
+              children: [
+                Icon(Icons.leaderboard, size: 18, color: WantrTheme.discovered),
+                SizedBox(width: 8),
+                Text(
+                  'Team Leaderboard',
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    color: WantrTheme.textPrimary,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            
+            FutureBuilder<List<Map<String, dynamic>>>(
+              future: _teamService.getTeamMemberStats(_teamData!['id'] ?? ''),
+              builder: (context, snapshot) {
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return const Center(
+                    child: Padding(
+                      padding: EdgeInsets.all(16),
+                      child: CircularProgressIndicator(color: WantrTheme.discovered),
+                    ),
+                  );
+                }
+                
+                final members = snapshot.data ?? [];
+                if (members.isEmpty) {
+                  return const Text(
+                    'No data yet - start exploring!',
+                    style: TextStyle(color: WantrTheme.textSecondary),
+                  );
+                }
+                
+                return Column(
+                  children: members.asMap().entries.map((entry) {
+                    final rank = entry.key + 1;
+                    final member = entry.value;
+                    final isMe = member['isCurrentUser'] as bool;
+                    
+                    return Container(
+                      margin: const EdgeInsets.only(bottom: 8),
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                      decoration: BoxDecoration(
+                        color: isMe ? WantrTheme.discovered.withAlpha(30) : WantrTheme.undiscovered.withAlpha(50),
+                        borderRadius: BorderRadius.circular(8),
+                        border: isMe ? Border.all(color: WantrTheme.discovered, width: 1) : null,
+                      ),
+                      child: Row(
+                        children: [
+                          // Rank
+                          SizedBox(
+                            width: 28,
+                            child: Text(
+                              rank == 1 ? '🥇' : rank == 2 ? '🥈' : rank == 3 ? '🥉' : '#$rank',
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                color: rank <= 3 ? WantrTheme.textPrimary : WantrTheme.textSecondary,
+                              ),
+                            ),
+                          ),
+                          
+                          // Avatar
+                          CircleAvatar(
+                            radius: 14,
+                            backgroundColor: WantrTheme.streetTeamGreen,
+                            backgroundImage: member['photoUrl'] != null
+                                ? NetworkImage(member['photoUrl'])
+                                : null,
+                            child: member['photoUrl'] == null
+                                ? const Icon(Icons.person, size: 14, color: WantrTheme.background)
+                                : null,
+                          ),
+                          const SizedBox(width: 10),
+                          
+                          // Name
+                          Expanded(
+                            child: Text(
+                              member['displayName'] ?? 'Unknown',
+                              style: TextStyle(
+                                color: isMe ? WantrTheme.discovered : WantrTheme.textPrimary,
+                                fontWeight: isMe ? FontWeight.bold : FontWeight.normal,
+                              ),
+                            ),
+                          ),
+                          
+                          // Segments count
+                          Text(
+                            '${member['segments']} 🗺️',
+                            style: const TextStyle(
+                              color: WantrTheme.textSecondary,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  }).toList(),
+                );
+              },
             ),
           ] else ...[
             // No team - show options
@@ -506,6 +684,39 @@ class _AccountScreenState extends State<AccountScreen> {
     }
   }
 
+  Future<void> _continueAsGuest() async {
+    if (!mounted) return;
+    setState(() {
+      _isLoading = true;
+      _error = null;
+    });
+
+    try {
+      await _authService.signInAnonymously();
+    } catch (e) {
+      if (mounted) setState(() => _error = 'Guest sign in failed: $e');
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _linkWithGoogle() async {
+    if (!mounted) return;
+    setState(() {
+      _isLoading = true;
+      _error = null;
+    });
+
+    try {
+      await _authService.linkWithGoogle();
+      await _loadTeamData();
+    } catch (e) {
+      if (mounted) setState(() => _error = 'Link failed: $e');
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
   Future<void> _signOut() async {
     await _authService.signOut();
     if (mounted) setState(() => _teamData = null);
@@ -534,6 +745,41 @@ class _AccountScreenState extends State<AccountScreen> {
     if (confirm == true) {
       await _teamService.leaveTeam();
       setState(() => _teamData = null);
+    }
+  }
+
+  Future<void> _syncDiscoveries() async {
+    if (!mounted) return;
+    setState(() => _isLoading = true);
+
+    try {
+      // Get all local segments from GameProvider
+      final gameProvider = context.read<GameProvider>();
+      final localSegments = gameProvider.revealedSegments;
+      
+      // Upload to cloud
+      final cloudSync = CloudSyncService(_authService);
+      final count = await cloudSync.uploadLocalSegments(localSegments);
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Synced $count discoveries to team!'),
+            backgroundColor: WantrTheme.streetTeamGreen,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Sync failed: $e'),
+            backgroundColor: Colors.redAccent,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
