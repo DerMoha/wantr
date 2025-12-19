@@ -14,12 +14,14 @@ import '../services/location_service.dart';
 import '../services/osm_street_service.dart';
 import '../services/auth_service.dart';
 import '../services/cloud_sync_service.dart';
+import '../services/tracking_notification_service.dart';
 
 /// Main game provider - manages all game state and logic
 class GameProvider extends ChangeNotifier {
   final LocationService _locationService = LocationService();
   final OsmStreetService _osmService = OsmStreetService();
   final AuthService _authService = AuthService();
+  final TrackingNotificationService _notificationService = TrackingNotificationService();
   late final CloudSyncService _cloudSyncService;
   
   GameState? _gameState;
@@ -41,6 +43,15 @@ class GameProvider extends ChangeNotifier {
   // OSM loading state
   bool _isLoadingStreets = false;
   String? _osmError;
+
+  // Throttling for notifyListeners (max 2x per second)
+  DateTime? _lastNotifyTime;
+  bool _notifyPending = false;
+  static const Duration _notifyThrottleDuration = Duration(milliseconds: 500);
+  
+  // Auto-fetch OSM when user moves far
+  LatLng? _lastOsmFetchLocation;
+  static const double _osmRefetchDistanceKm = 1.0; // Refetch when moved 1km from last fetch
 
   // Constants
   static const double _minDistanceForNewPoint = 15.0; // meters
@@ -89,6 +100,9 @@ class GameProvider extends ChangeNotifier {
     
     // Initialize cloud sync
     _cloudSyncService = CloudSyncService(_authService);
+    
+    // Initialize notification service
+    await _notificationService.initialize();
     
     // Register Hive adapters
     registerHiveAdapters();
@@ -165,10 +179,13 @@ class GameProvider extends ChangeNotifier {
     
     int distanceFilter = 10;
     Duration interval = const Duration(seconds: 5);
+    bool isBatterySaver = true; // Default to battery saver
     
     if (settings != null) {
       // Get settings values based on mode index
       final gpsModeIndex = settings.gpsModeIndex ?? 0;
+      isBatterySaver = gpsModeIndex == 0; // 0 = batterySaver mode
+      
       distanceFilter = switch (gpsModeIndex) {
         1 => 5,  // balanced
         2 => 3,  // highAccuracy
@@ -184,7 +201,11 @@ class GameProvider extends ChangeNotifier {
     await _locationService.startTracking(
       distanceFilter: distanceFilter,
       interval: interval,
+      batterySaverMode: isBatterySaver,
     );
+    
+    // Start the live tracking notification
+    await _notificationService.startTracking();
     
     _locationSubscription = _locationService.locationStream.listen((location) {
       _handleLocationUpdate(location);
@@ -222,10 +243,14 @@ class GameProvider extends ChangeNotifier {
   }
 
   /// Stop location tracking
-  void stopTracking() {
+  Future<void> stopTracking() async {
     _locationService.stopTracking();
     _locationSubscription?.cancel();
     _locationSubscription = null;
+    
+    // Stop the live tracking notification
+    await _notificationService.stopTracking();
+    
     notifyListeners();
   }
 
@@ -248,12 +273,59 @@ class GameProvider extends ChangeNotifier {
         _currentWalkPath.add(newLocation);
         _gameState?.addDistance(distance);
         _saveGameState();
+        
+        // Update live notification with distance walked
+        _notificationService.addDistance(distance);
       }
     } else {
       _currentWalkPath.add(newLocation);
     }
+    
+    // Auto-fetch OSM data if we've moved far from last fetch location
+    _checkAndRefetchOsmData(newLocation);
 
-    notifyListeners();
+    _throttledNotifyListeners();
+  }
+  
+  /// Throttled version of notifyListeners to prevent UI jank
+  void _throttledNotifyListeners() {
+    final now = DateTime.now();
+    
+    if (_lastNotifyTime == null || 
+        now.difference(_lastNotifyTime!) >= _notifyThrottleDuration) {
+      _lastNotifyTime = now;
+      notifyListeners();
+      return;
+    }
+    
+    // Schedule a delayed notify if not already pending
+    if (!_notifyPending) {
+      _notifyPending = true;
+      Future.delayed(_notifyThrottleDuration, () {
+        _notifyPending = false;
+        _lastNotifyTime = DateTime.now();
+        notifyListeners();
+      });
+    }
+  }
+  
+  /// Check if we need to refetch OSM data (moved far from last fetch)
+  void _checkAndRefetchOsmData(LatLng currentLocation) {
+    if (_lastOsmFetchLocation == null) {
+      _lastOsmFetchLocation = currentLocation;
+      return;
+    }
+    
+    final distanceFromLastFetch = _locationService.calculateDistance(
+      _lastOsmFetchLocation!,
+      currentLocation,
+    ) / 1000; // Convert to km
+    
+    if (distanceFromLastFetch >= _osmRefetchDistanceKm) {
+      debugPrint('📍 Moved ${distanceFromLastFetch.toStringAsFixed(1)}km, refetching OSM data...');
+      _fetchStreetsForArea(currentLocation);
+      _lastOsmFetchLocation = currentLocation;
+    }
   }
 
   /// Reveal street segments within 30m radius of current location
@@ -309,6 +381,9 @@ class GameProvider extends ChangeNotifier {
       _gameState?.addXp(newSegments * 5); // 5 XP per segment
       _gameState?.discoveryPoints += newSegments;
       debugPrint('🗺️ Revealed $newSegments new segments! Total: ${_revealedSegments.length}');
+      
+      // Update live notification with streets discovered
+      _notificationService.addStreets(newSegments);
     }
   }
   

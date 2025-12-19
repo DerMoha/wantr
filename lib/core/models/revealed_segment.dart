@@ -83,10 +83,22 @@ class RevealedSegment extends HiveObject {
   List<LatLng> get points => [startPoint, endPoint];
 
   /// Increment walk count and mark as discovered by me
+  /// Only counts once per day to prevent gaming the system
   void recordWalk() {
-    timesWalked++;
-    lastWalkedAt = DateTime.now();
+    final now = DateTime.now();
+    
+    // Check if already walked today
+    if (!_isSameDay(lastWalkedAt, now)) {
+      timesWalked++;
+    }
+    
+    lastWalkedAt = now;
     discoveredByMe = true; // If I walk over teammate's segment, it becomes mine
+  }
+  
+  /// Check if two dates are on the same day
+  bool _isSameDay(DateTime a, DateTime b) {
+    return a.year == b.year && a.month == b.month && a.day == b.day;
   }
 
   /// Length of this segment in meters

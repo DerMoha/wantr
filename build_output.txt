@@ -1,0 +1,7 @@
+Running Gradle task 'assembleDebug'...                          
+Warnung: [options] Quellwert 8 ist veraltet und wird in einem zuk├╝nftigen Release entfernt
+Warnung: [options] Zielwert 8 ist veraltet und wird in einem zuk├╝nftigen Release entfernt
+Warnung: [options] Verwenden Sie -Xlint:-options, um Warnungen zu veralteten Optionen zu unterdr├╝cken.
+3 Warnungen
+Running Gradle task 'assembleDebug'...                          26710,7s
+ÔêÜ Built build\app\outputs\flutter-apk\app-debug.apk

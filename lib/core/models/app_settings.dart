@@ -18,9 +18,13 @@ class AppSettings extends HiveObject {
   @HiveField(1)
   bool showDebugInfo;
 
+  @HiveField(2)
+  bool wifiOnlySync; // Only sync to cloud when on WiFi
+
   AppSettings({
     this.gpsModeIndex = 0, // Default to batterySaver
     this.showDebugInfo = false,
+    this.wifiOnlySync = false, // Default to sync on any network
   });
 
   GpsMode get gpsMode => GpsMode.values[gpsModeIndex];
@@ -54,3 +58,4 @@ class AppSettings extends HiveObject {
     GpsMode.highAccuracy => 'Updates every 3m - Smoothest, drains battery',
   };
 }
+

@@ -95,7 +95,12 @@ class LocationService {
   /// Uses foreground service on Android for background tracking
   /// [distanceFilter] - meters moved before update (default 10)
   /// [interval] - time between checks (default 5 seconds)
-  Future<void> startTracking({int distanceFilter = 10, Duration interval = const Duration(seconds: 5)}) async {
+  /// [batterySaverMode] - if true, uses more battery-efficient settings
+  Future<void> startTracking({
+    int distanceFilter = 10, 
+    Duration interval = const Duration(seconds: 5),
+    bool batterySaverMode = false,
+  }) async {
     if (_isTracking) return;
 
     final hasPermission = await checkPermissions();
@@ -105,38 +110,46 @@ class LocationService {
     }
 
     _isTracking = true;
-    debugPrint('📍 Started tracking: ${distanceFilter}m filter, ${interval.inSeconds}s interval');
+    debugPrint('📍 Started tracking: ${distanceFilter}m filter, ${interval.inSeconds}s interval, batterySaver=$batterySaverMode');
 
     // Platform-specific location settings
     late LocationSettings locationSettings;
     
+    // Use lower accuracy in battery saver mode
+    final accuracy = batterySaverMode ? LocationAccuracy.medium : LocationAccuracy.high;
+    
     if (defaultTargetPlatform == TargetPlatform.android) {
       // Android: Use foreground service for background tracking
+      // Disable wake lock in battery saver mode to save more power
       locationSettings = AndroidSettings(
-        accuracy: LocationAccuracy.high,
+        accuracy: accuracy,
         distanceFilter: distanceFilter,
         forceLocationManager: false,
         intervalDuration: interval,
-        foregroundNotificationConfig: const ForegroundNotificationConfig(
-          notificationText: 'Wantr is tracking your exploration',
+        foregroundNotificationConfig: ForegroundNotificationConfig(
+          notificationText: batterySaverMode 
+              ? 'Wantr is tracking (battery saver)' 
+              : 'Wantr is tracking your exploration',
           notificationTitle: 'Exploring...',
-          enableWakeLock: true,
-          notificationIcon: AndroidResource(name: 'ic_launcher', defType: 'mipmap'),
+          enableWakeLock: !batterySaverMode, // Disable wake lock in battery saver
+          notificationIcon: const AndroidResource(name: 'ic_launcher', defType: 'mipmap'),
         ),
       );
     } else if (defaultTargetPlatform == TargetPlatform.iOS) {
       // iOS: Use Apple settings for background
+      // Enable pause when stationary to save battery
       locationSettings = AppleSettings(
-        accuracy: LocationAccuracy.high,
+        accuracy: accuracy,
         distanceFilter: distanceFilter,
         activityType: ActivityType.fitness,
-        pauseLocationUpdatesAutomatically: false,
+        pauseLocationUpdatesAutomatically: true, // Let iOS pause when stationary
         showBackgroundLocationIndicator: true,
+        allowBackgroundLocationUpdates: true,
       );
     } else {
       // Default for other platforms
       locationSettings = LocationSettings(
-        accuracy: LocationAccuracy.high,
+        accuracy: accuracy,
         distanceFilter: distanceFilter,
       );
     }

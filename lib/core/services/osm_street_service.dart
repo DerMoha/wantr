@@ -91,11 +91,13 @@ class OsmStreet {
 class OsmStreetService {
   static const String _overpassUrl = 'https://overpass-api.de/api/interpreter';
   static const double _snapRadius = 30.0; // meters
+  static const Duration _cacheMaxAge = Duration(days: 7); // Refresh cache after 7 days
   
   Box<String>? _streetCacheBox;
   List<OsmStreet> _cachedStreets = [];
   LatLng? _cachedCenter;
   double? _cachedRadius;
+  DateTime? _cacheTimestamp;
 
   /// Initialize the service
   Future<void> initialize() async {
@@ -109,6 +111,17 @@ class OsmStreetService {
     if (cachedData != null) {
       try {
         final data = jsonDecode(cachedData);
+        
+        // Check cache age - expire after 7 days
+        if (data['timestamp'] != null) {
+          _cacheTimestamp = DateTime.parse(data['timestamp'] as String);
+          final age = DateTime.now().difference(_cacheTimestamp!);
+          if (age > _cacheMaxAge) {
+            debugPrint('📍 OSM cache expired (${age.inDays} days old), will refetch');
+            return; // Don't load expired cache
+          }
+        }
+        
         _cachedStreets = (data['streets'] as List)
             .map((s) => OsmStreet.fromJson(s))
             .toList();

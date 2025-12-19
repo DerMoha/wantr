@@ -24,6 +24,7 @@ class _AccountScreenState extends State<AccountScreen> {
   late final TeamService _teamService;
   
   bool _isLoading = false;
+  bool _isSyncing = false;  // Separate loading state for sync button
   String? _error;
   Map<String, dynamic>? _teamData;
   String? _customDisplayName;
@@ -331,9 +332,18 @@ class _AccountScreenState extends State<AccountScreen> {
               children: [
                 Expanded(
                   child: ElevatedButton.icon(
-                    onPressed: _syncDiscoveries,
-                    icon: const Icon(Icons.cloud_upload, size: 18),
-                    label: const Text('Sync Discoveries'),
+                    onPressed: _isSyncing ? null : _syncDiscoveries,
+                    icon: _isSyncing 
+                        ? const SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: WantrTheme.background,
+                            ),
+                          )
+                        : const Icon(Icons.cloud_upload, size: 18),
+                    label: Text(_isSyncing ? 'Syncing...' : 'Sync Discoveries'),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: WantrTheme.streetTeamGreen,
                       foregroundColor: WantrTheme.background,
@@ -689,15 +699,55 @@ class _AccountScreenState extends State<AccountScreen> {
             }).toList(),
           ),
           
-          const SizedBox(height: 12),
+          const SizedBox(height: 8),
           
           const Text(
-            '⚠️ Higher accuracy drains battery faster. Restart app to apply changes.',
+            '💡 Changes apply next time you start tracking.',
             style: TextStyle(
               color: WantrTheme.textSecondary,
               fontSize: 11,
               fontStyle: FontStyle.italic,
             ),
+          ),
+          
+          const SizedBox(height: 20),
+          const Divider(color: WantrTheme.undiscovered),
+          const SizedBox(height: 12),
+          
+          // WiFi-only sync toggle
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'WiFi-only sync',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w500,
+                      color: WantrTheme.textPrimary,
+                    ),
+                  ),
+                  SizedBox(height: 4),
+                  Text(
+                    'Only sync to team when on WiFi',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: WantrTheme.textSecondary,
+                    ),
+                  ),
+                ],
+              ),
+              Switch(
+                value: settings.wifiOnlySync,
+                onChanged: (value) async {
+                  settings.wifiOnlySync = value;
+                  await box.put('settings', settings);
+                  setState(() {});
+                },
+                activeColor: WantrTheme.discovered,
+              ),
+            ],
           ),
         ],
       ),
@@ -845,7 +895,7 @@ class _AccountScreenState extends State<AccountScreen> {
 
   Future<void> _syncDiscoveries() async {
     if (!mounted) return;
-    setState(() => _isLoading = true);
+    setState(() => _isSyncing = true);
 
     try {
       // Get all local segments from GameProvider
@@ -874,7 +924,7 @@ class _AccountScreenState extends State<AccountScreen> {
         );
       }
     } finally {
-      if (mounted) setState(() => _isLoading = false);
+      if (mounted) setState(() => _isSyncing = false);
     }
   }
 
