@@ -32,6 +32,7 @@ class GameStateAdapter extends TypeAdapter<GameState> {
       outpostsBuilt: fields[12] as int,
       tradesCompleted: fields[13] as int,
       teamId: fields[16] as String?,
+      lastTeamSyncAt: fields[17] as DateTime?,
       createdAt: fields[14] as DateTime?,
       lastActiveAt: fields[15] as DateTime?,
     );
@@ -40,7 +41,7 @@ class GameStateAdapter extends TypeAdapter<GameState> {
   @override
   void write(BinaryWriter writer, GameState obj) {
     writer
-      ..writeByte(17)
+      ..writeByte(18)
       ..writeByte(0)
       ..write(obj.playerId)
       ..writeByte(1)
@@ -74,7 +75,9 @@ class GameStateAdapter extends TypeAdapter<GameState> {
       ..writeByte(15)
       ..write(obj.lastActiveAt)
       ..writeByte(16)
-      ..write(obj.teamId);
+      ..write(obj.teamId)
+      ..writeByte(17)
+      ..write(obj.lastTeamSyncAt);
   }
 
   @override

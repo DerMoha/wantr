@@ -173,17 +173,24 @@ class GameProvider extends ChangeNotifier {
       debugPrint('⚠️ Error refreshing teamId: $e');
     }
 
-    // 2. Start real-time sync for team segments
-    _startTeamSegmentsStream(freshTeamId);
+    // 2. Start real-time sync for team segments (incremental if we have a timestamp)
+    _startTeamSegmentsStream(freshTeamId, lastSyncAt: _gameState?.lastTeamSyncAt);
   }
 
   /// Start real-time listener for team discoveries
-  void _startTeamSegmentsStream(String? teamId) {
+  void _startTeamSegmentsStream(String? teamId, {DateTime? lastSyncAt}) {
     if (teamId == null) return;
     
     _teamSegmentsSubscription?.cancel();
-    _teamSegmentsSubscription = _cloudSyncService.teamSegmentsStream(teamId).listen((teamSegments) async {
+    _teamSegmentsSubscription = _cloudSyncService.teamSegmentsStream(
+      teamId, 
+      lastSyncAt: lastSyncAt
+    ).listen((teamSegments) async {
+      if (teamSegments.isEmpty) return;
+
       int addedCount = 0;
+      DateTime? latestUpdate;
+
       for (final teamSegment in teamSegments) {
         final existingIndex = _revealedSegments.indexWhere((s) => s.id == teamSegment.id);
         
@@ -193,11 +200,21 @@ class GameProvider extends ChangeNotifier {
           await _segmentBox!.put(teamSegment.id, teamSegment);
           addedCount++;
         }
+
+        // Track the latest update timestamp (not yet available in RevealedSegment, but we can use DateTime.now() 
+        // as a safe checkpoint, or better, we could add lastWalkedAt to the model if we had it)
+        // For now, let's use the current time as the "last sync" checkpoint.
       }
       
       if (addedCount > 0) {
         debugPrint('☁️ Synced $addedCount new team segments in real-time');
         notifyListeners();
+      }
+
+      // Update sync timestamp to now (to catch only future updates)
+      if (_gameState != null) {
+        _gameState!.lastTeamSyncAt = DateTime.now();
+        await _saveGameState();
       }
     });
   }

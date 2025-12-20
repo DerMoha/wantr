@@ -155,18 +155,23 @@ class CloudSyncService {
     });
   }
 
-  /// Get all team's revealed segments (for loading teammate discoveries)
-  Future<List<RevealedSegment>> getTeamRevealedSegments() async {
+  /// Get team's revealed segments (optionally after a certain date for incremental sync)
+  Future<List<RevealedSegment>> getTeamRevealedSegments({DateTime? lastSyncAt}) async {
     final teamId = await _authService.getUserTeamId();
     if (teamId == null) return [];
 
     final userId = _authService.userId;
     
-    final snapshot = await _firestore
+    Query query = _firestore
         .collection('teams')
         .doc(teamId)
-        .collection('revealedSegments')
-        .get();
+        .collection('revealedSegments');
+
+    if (lastSyncAt != null) {
+      query = query.where('lastWalkedAt', isGreaterThan: Timestamp.fromDate(lastSyncAt));
+    }
+
+    final snapshot = await query.get();
 
     return snapshot.docs.map((doc) {
       final data = doc.data();
@@ -186,16 +191,20 @@ class CloudSyncService {
     }).toList();
   }
 
-  /// Stream team's revealed segments for real-time updates
-  Stream<List<RevealedSegment>> teamSegmentsStream(String teamId) {
+  /// Stream team's revealed segments for real-time updates (can be filtered for incremental sync)
+  Stream<List<RevealedSegment>> teamSegmentsStream(String teamId, {DateTime? lastSyncAt}) {
     final userId = _authService.userId;
     
-    return _firestore
+    Query query = _firestore
         .collection('teams')
         .doc(teamId)
-        .collection('revealedSegments')
-        .snapshots()
-        .map((snapshot) => snapshot.docs.map((doc) {
+        .collection('revealedSegments');
+
+    if (lastSyncAt != null) {
+      query = query.where('lastWalkedAt', isGreaterThan: Timestamp.fromDate(lastSyncAt));
+    }
+
+    return query.snapshots().map((snapshot) => snapshot.docs.map((doc) {
           final data = doc.data();
           final discoveredBy = data['discoveredBy'] as String?;
           

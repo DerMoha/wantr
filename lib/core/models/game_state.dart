@@ -56,6 +56,9 @@ class GameState extends HiveObject {
   @HiveField(16)
   String? teamId;
 
+  @HiveField(17)
+  DateTime? lastTeamSyncAt;
+
   GameState({
     required this.playerId,
     this.playerName = 'Wanderer',
@@ -72,6 +75,7 @@ class GameState extends HiveObject {
     this.outpostsBuilt = 0,
     this.tradesCompleted = 0,
     this.teamId,
+    this.lastTeamSyncAt,
     DateTime? createdAt,
     DateTime? lastActiveAt,
   })  : createdAt = createdAt ?? DateTime.now(),
