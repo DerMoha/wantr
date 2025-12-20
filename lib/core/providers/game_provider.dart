@@ -37,12 +37,15 @@ class GameProvider extends ChangeNotifier {
 
   // Location tracking
   StreamSubscription? _locationSubscription;
+  StreamSubscription? _teamSegmentsSubscription; // New subscription for real-time team sync
   LatLng? _currentLocation;
   final List<LatLng> _currentWalkPath = [];
   
   // OSM loading state
   bool _isLoadingStreets = false;
   String? _osmError;
+
+  bool _isInitialized = false;
 
   // Throttling for notifyListeners (max 2x per second)
   DateTime? _lastNotifyTime;
@@ -57,6 +60,9 @@ class GameProvider extends ChangeNotifier {
   static const double _minDistanceForNewPoint = 15.0; // meters
   static const double _streetFetchRadiusKm = 2.0; // km
   static const double _revealRadius = 15.0; // meters - fog of war reveal radius
+
+  /// Whether the provider has finished its initial load
+  bool get isInitialized => _isInitialized;
 
   /// Current game state
   GameState? get gameState => _gameState;
@@ -96,6 +102,8 @@ class GameProvider extends ChangeNotifier {
 
   /// Initialize the game provider
   Future<void> initialize() async {
+    if (_isInitialized) return;
+
     await Hive.initFlutter();
     
     // Initialize cloud sync
@@ -113,9 +121,6 @@ class GameProvider extends ChangeNotifier {
     _segmentBox = await Hive.openBox<RevealedSegment>('revealed_segments');
     _outpostBox = await Hive.openBox<Outpost>('outposts');
 
-    // Initialize OSM service
-    await _osmService.initialize();
-
     // Load or create game state
     if (_gameStateBox!.isEmpty) {
       _gameState = GameState(
@@ -127,6 +132,14 @@ class GameProvider extends ChangeNotifier {
       _gameState = _gameStateBox!.get('current');
     }
 
+    // Initialize OSM service (in background to speed up startup)
+    _osmService.initialize().catchError((e) => debugPrint('❌ OSM init error: $e'));
+
+    // Populate AuthService cache from persisted GameState
+    if (_gameState?.teamId != null) {
+      _authService.updateCachedTeamId(_gameState!.teamId);
+    }
+
     // Load discovered streets (legacy)
     _discoveredStreets.addAll(_streetBox!.values);
     
@@ -134,13 +147,59 @@ class GameProvider extends ChangeNotifier {
     _revealedSegments.addAll(_segmentBox!.values);
     debugPrint('📍 Loaded ${_revealedSegments.length} local revealed segments');
     
-    // Load team segments if logged in
-    await _loadTeamSegments();
-
     // Load outposts
     _outposts.addAll(_outpostBox!.values);
 
+    // Finalize initialization
+    _isInitialized = true;
     notifyListeners();
+
+    // Background tasks that don't need to block UI
+    _backgroundLoading();
+  }
+
+  /// Non-blocking background loading tasks
+  Future<void> _backgroundLoading() async {
+    if (!_authService.isLoggedIn) return;
+
+    // 1. Refresh teamId from Firestore to catch up with changes on other devices
+    try {
+      final freshTeamId = await _authService.getUserTeamId(forceRefresh: true);
+      if (freshTeamId != _gameState?.teamId) {
+        _gameState?.teamId = freshTeamId;
+        await _saveGameState();
+      }
+    } catch (e) {
+      debugPrint('⚠️ Error refreshing teamId: $e');
+    }
+
+    // 2. Start real-time sync for team segments
+    _startTeamSegmentsStream(freshTeamId);
+  }
+
+  /// Start real-time listener for team discoveries
+  void _startTeamSegmentsStream(String? teamId) {
+    if (teamId == null) return;
+    
+    _teamSegmentsSubscription?.cancel();
+    _teamSegmentsSubscription = _cloudSyncService.teamSegmentsStream(teamId).listen((teamSegments) async {
+      int addedCount = 0;
+      for (final teamSegment in teamSegments) {
+        final existingIndex = _revealedSegments.indexWhere((s) => s.id == teamSegment.id);
+        
+        if (existingIndex == -1) {
+          // New segment from team - add it
+          _revealedSegments.add(teamSegment);
+          await _segmentBox!.put(teamSegment.id, teamSegment);
+          addedCount++;
+        }
+      }
+      
+      if (addedCount > 0) {
+        debugPrint('☁️ Synced $addedCount new team segments in real-time');
+        notifyListeners();
+      }
+    });
   }
   
   /// Load team segments from cloud and merge with local
@@ -501,6 +560,8 @@ class GameProvider extends ChangeNotifier {
   @override
   void dispose() {
     stopTracking();
+    _locationSubscription?.cancel();
+    _teamSegmentsSubscription?.cancel();
     _locationService.dispose();
     super.dispose();
   }

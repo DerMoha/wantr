@@ -7,9 +7,15 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 /// Authentication service with optional login
 /// Users can play without an account, but need one for teams/leaderboards
 class AuthService {
+  static final AuthService _instance = AuthService._internal();
+  factory AuthService() => _instance;
+  AuthService._internal();
+
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final GoogleSignIn _googleSignIn = GoogleSignIn();
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+
+  String? _cachedTeamId;
 
   /// Current Firebase user (null if not logged in)
   User? get currentUser => _auth.currentUser;
@@ -156,6 +162,7 @@ class AuthService {
 
   /// Sign out
   Future<void> signOut() async {
+    _cachedTeamId = null;
     await _googleSignIn.signOut();
     await _auth.signOut();
     debugPrint('👋 Signed out');
@@ -186,10 +193,20 @@ class AuthService {
   }
 
   /// Get user's team ID (if any)
-  Future<String?> getUserTeamId() async {
+  Future<String?> getUserTeamId({bool forceRefresh = false}) async {
     if (!isLoggedIn) return null;
     
+    if (_cachedTeamId != null && !forceRefresh) {
+      return _cachedTeamId;
+    }
+    
     final doc = await _firestore.collection('users').doc(userId).get();
-    return doc.data()?['teamId'] as String?;
+    _cachedTeamId = doc.data()?['teamId'] as String?;
+    return _cachedTeamId;
+  }
+
+  /// Manually update the cached team ID
+  void updateCachedTeamId(String? teamId) {
+    _cachedTeamId = teamId;
   }
 }

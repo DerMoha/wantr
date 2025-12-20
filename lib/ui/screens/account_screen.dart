@@ -24,6 +24,7 @@ class _AccountScreenState extends State<AccountScreen> {
   late final TeamService _teamService;
   
   bool _isLoading = false;
+  bool _isLoadingTeam = false; // New loading state for team data
   bool _isSyncing = false;  // Separate loading state for sync button
   String? _error;
   Map<String, dynamic>? _teamData;
@@ -42,25 +43,34 @@ class _AccountScreenState extends State<AccountScreen> {
     // Load custom display name from Firestore
     final userId = _authService.userId;
     if (userId != null) {
-      final userDoc = await FirebaseFirestore.instance
+      FirebaseFirestore.instance
           .collection('users')
           .doc(userId)
-          .get();
-      if (userDoc.exists && mounted) {
-        setState(() {
-          _customDisplayName = userDoc.data()?['displayName'];
-        });
-      }
+          .get()
+          .then((userDoc) {
+            if (userDoc.exists && mounted) {
+              setState(() {
+                _customDisplayName = userDoc.data()?['displayName'];
+              });
+            }
+          });
     }
     
     // Load team data
     final teamId = await _authService.getUserTeamId();
     if (teamId != null) {
-      final data = await _teamService.getTeamData(teamId);
-      if (data != null) {
-        data['id'] = teamId;
+      if (mounted) setState(() => _isLoadingTeam = true);
+      try {
+        final data = await _teamService.getTeamData(teamId);
+        if (data != null) {
+          data['id'] = teamId;
+        }
+        if (mounted) setState(() => _teamData = data);
+      } finally {
+        if (mounted) setState(() => _isLoadingTeam = false);
       }
-      if (mounted) setState(() => _teamData = data);
+    } else {
+      if (mounted) setState(() => _teamData = null);
     }
   }
 
@@ -302,7 +312,14 @@ class _AccountScreenState extends State<AccountScreen> {
           
           const SizedBox(height: 16),
           
-          if (_teamData != null) ...[
+          if (_isLoadingTeam)
+            const Center(
+              child: Padding(
+                padding: EdgeInsets.all(20),
+                child: CircularProgressIndicator(color: WantrTheme.discovered),
+              ),
+            )
+          else if (_teamData != null) ...[
             // Show current team
             Text(
               _teamData!['name'] ?? 'Unnamed Team',

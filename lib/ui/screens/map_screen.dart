@@ -23,11 +23,14 @@ class MapScreen extends StatefulWidget {
   State<MapScreen> createState() => _MapScreenState();
 }
 
-class _MapScreenState extends State<MapScreen> {
+class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   final MapController _mapController = MapController();
   final ConnectivityService _connectivityService = ConnectivityService();
   StreamSubscription<bool>? _connectivitySubscription;
   
+  late AnimationController _pulseController;
+  late Animation<double> _pulseAnimation;
+
   bool _isFollowingUser = true;
   bool _showStats = false;
   bool _isOnline = true;
@@ -37,11 +40,21 @@ class _MapScreenState extends State<MapScreen> {
     super.initState();
     _initializeLocation();
     _initializeConnectivity();
+    
+    _pulseController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1500),
+    )..repeat(reverse: true);
+    
+    _pulseAnimation = Tween<double>(begin: 0.6, end: 1.0).animate(
+      CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
+    );
   }
 
   @override
   void dispose() {
     _connectivitySubscription?.cancel();
+    _pulseController.dispose();
     super.dispose();
   }
 
@@ -245,29 +258,34 @@ class _MapScreenState extends State<MapScreen> {
               ),
               
               // Stats panel (slide in from left)
-              if (_showStats)
-                const Positioned(
-                  left: 16,
-                  bottom: 200,
-                  child: PlayerStatsPanel(),
-                ),
+              AnimatedPositioned(
+                duration: const Duration(milliseconds: 300),
+                curve: Curves.easeOutCubic,
+                left: _showStats ? 16 : -250,
+                bottom: 200,
+                child: const PlayerStatsPanel(),
+              ),
               
               // Offline banner
-              if (!_isOnline)
-                Positioned(
-                  top: MediaQuery.of(context).padding.top + 8,
-                  left: 16,
-                  right: 16,
+              AnimatedPositioned(
+                duration: const Duration(milliseconds: 400),
+                curve: Curves.elasticOut,
+                top: _isOnline ? -100 : MediaQuery.of(context).padding.top + 8,
+                left: 16,
+                right: 16,
+                child: AnimatedOpacity(
+                  duration: const Duration(milliseconds: 200),
+                  opacity: _isOnline ? 0.0 : 1.0,
                   child: Container(
                     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                     decoration: BoxDecoration(
                       color: Colors.orange.shade800,
-                      borderRadius: BorderRadius.circular(8),
+                      borderRadius: BorderRadius.circular(12),
                       boxShadow: [
                         BoxShadow(
                           color: Colors.black.withAlpha(80),
-                          blurRadius: 8,
-                          offset: const Offset(0, 2),
+                          blurRadius: 10,
+                          offset: const Offset(0, 4),
                         ),
                       ],
                     ),
@@ -277,10 +295,11 @@ class _MapScreenState extends State<MapScreen> {
                         SizedBox(width: 12),
                         Expanded(
                           child: Text(
-                            'You\'re offline. Discoveries will sync when connection returns.',
+                            'You\'re offline. Discoveries will sync soon.',
                             style: TextStyle(
                               color: Colors.white,
                               fontSize: 13,
+                              fontWeight: FontWeight.w500,
                             ),
                           ),
                         ),
@@ -288,6 +307,7 @@ class _MapScreenState extends State<MapScreen> {
                     ),
                   ),
                 ),
+              ),
               
               // Tracking indicator
               Positioned(
@@ -381,74 +401,32 @@ class _MapScreenState extends State<MapScreen> {
   }
 
   Widget _buildAccountButton() {
-    return GestureDetector(
+    return _ShellButton(
       onTap: () => Navigator.push(
         context,
         MaterialPageRoute(builder: (_) => const AccountScreen()),
       ),
-      child: Container(
-        width: 48,
-        height: 48,
-        decoration: BoxDecoration(
-          color: WantrTheme.surface,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color: WantrTheme.undiscovered,
-            width: 1,
-          ),
-        ),
-        child: const Icon(
-          Icons.person_outline,
-          color: WantrTheme.textPrimary,
-        ),
-      ),
+      icon: Icons.person_outline,
+      color: WantrTheme.textPrimary,
     );
   }
 
   Widget _buildStatsButton() {
-    return GestureDetector(
+    return _ShellButton(
       onTap: () => Navigator.push(
         context,
         MaterialPageRoute(builder: (_) => const StatsScreen()),
       ),
-      child: Container(
-        width: 48,
-        height: 48,
-        decoration: BoxDecoration(
-          color: WantrTheme.surface,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color: WantrTheme.undiscovered,
-            width: 1,
-          ),
-        ),
-        child: const Icon(
-          Icons.insights,
-          color: WantrTheme.discovered,
-        ),
-      ),
+      icon: Icons.insights,
+      color: WantrTheme.discovered,
     );
   }
 
   Widget _buildStatsToggle() {
-    return GestureDetector(
+    return _ShellButton(
       onTap: () => setState(() => _showStats = !_showStats),
-      child: Container(
-        width: 48,
-        height: 48,
-        decoration: BoxDecoration(
-          color: WantrTheme.surface,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color: WantrTheme.undiscovered,
-            width: 1,
-          ),
-        ),
-        child: Icon(
-          _showStats ? Icons.close : Icons.bar_chart,
-          color: WantrTheme.textPrimary,
-        ),
-      ),
+      icon: _showStats ? Icons.close : Icons.bar_chart,
+      color: WantrTheme.textPrimary,
     );
   }
 
@@ -457,46 +435,119 @@ class _MapScreenState extends State<MapScreen> {
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       decoration: BoxDecoration(
         color: WantrTheme.surface.withOpacity(0.9),
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(24),
         border: Border.all(
           color: gameProvider.isTracking 
-              ? WantrTheme.energy 
-              : WantrTheme.undiscovered,
-          width: 2,
+              ? WantrTheme.energy.withOpacity(0.5) 
+              : WantrTheme.undiscovered.withOpacity(0.5),
+          width: 1.5,
         ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.2),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Container(
-            width: 8,
-            height: 8,
-            decoration: BoxDecoration(
-              color: gameProvider.isTracking 
-                  ? WantrTheme.energy 
-                  : WantrTheme.textSecondary,
-              shape: BoxShape.circle,
-            ),
+          AnimatedBuilder(
+            animation: _pulseAnimation,
+            builder: (context, child) {
+              return Container(
+                width: 10,
+                height: 10,
+                decoration: BoxDecoration(
+                  color: (gameProvider.isTracking 
+                      ? WantrTheme.energy 
+                      : WantrTheme.textSecondary).withOpacity(_pulseAnimation.value),
+                  shape: BoxShape.circle,
+                  boxShadow: [
+                    if (gameProvider.isTracking)
+                      BoxShadow(
+                        color: WantrTheme.energy.withOpacity(0.4 * _pulseAnimation.value),
+                        blurRadius: 6,
+                        spreadRadius: 2,
+                      ),
+                  ],
+                ),
+              );
+            },
           ),
-          const SizedBox(width: 8),
+          const SizedBox(width: 10),
           Text(
-            gameProvider.isTracking ? 'Tracking' : 'Paused',
+            gameProvider.isTracking ? 'TRACKING' : 'PAUSED',
             style: TextStyle(
               color: gameProvider.isTracking 
                   ? WantrTheme.energy 
                   : WantrTheme.textSecondary,
-              fontWeight: FontWeight.w500,
+              fontWeight: FontWeight.w800,
+              fontSize: 11,
+              letterSpacing: 1.2,
             ),
           ),
-          const SizedBox(width: 8),
+          const SizedBox(width: 12),
+          Container(
+            width: 1,
+            height: 12,
+            color: WantrTheme.undiscovered,
+          ),
+          const SizedBox(width: 12),
           Text(
-            '${gameProvider.discoveredStreets.length} streets',
+            '${gameProvider.discoveredStreets.length} STREETS',
             style: const TextStyle(
               color: WantrTheme.textSecondary,
-              fontSize: 12,
+              fontSize: 10,
+              fontWeight: FontWeight.w600,
+              letterSpacing: 0.5,
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _ShellButton extends StatelessWidget {
+  final VoidCallback onTap;
+  final IconData icon;
+  final Color color;
+
+  const _ShellButton({
+    required this.onTap,
+    required this.icon,
+    required this.color,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: 48,
+        height: 48,
+        decoration: BoxDecoration(
+          color: WantrTheme.surface.withOpacity(0.9),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: WantrTheme.undiscovered.withOpacity(0.5),
+            width: 1,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.2),
+              blurRadius: 8,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        child: Icon(
+          icon,
+          color: color,
+          size: 24,
+        ),
       ),
     );
   }

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../core/theme/app_theme.dart';
+import 'animated_tap_container.dart';
 
 /// Map control buttons for zoom and centering
 class MapControls extends StatefulWidget {
@@ -63,12 +64,20 @@ class _MapControlsState extends State<MapControls> with SingleTickerProviderStat
   Widget build(BuildContext context) {
     return Container(
       decoration: BoxDecoration(
-        color: WantrTheme.surface,
-        borderRadius: BorderRadius.circular(12),
+        color: WantrTheme.surface.withOpacity(0.9),
+        borderRadius: BorderRadius.circular(16),
         border: Border.all(
-          color: WantrTheme.undiscovered,
-          width: 1,
+          color: WantrTheme.undiscovered.withOpacity(0.5),
+          width: 1.5,
         ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.3),
+            blurRadius: 15,
+            spreadRadius: 2,
+            offset: const Offset(0, 4),
+          ),
+        ],
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -76,9 +85,12 @@ class _MapControlsState extends State<MapControls> with SingleTickerProviderStat
           _ControlButton(
             icon: Icons.add,
             onPressed: widget.onZoomIn,
+            isTop: true,
           ),
           const Divider(
             height: 1,
+            indent: 8,
+            endIndent: 8,
             color: WantrTheme.undiscovered,
           ),
           _ControlButton(
@@ -87,34 +99,32 @@ class _MapControlsState extends State<MapControls> with SingleTickerProviderStat
           ),
           const Divider(
             height: 1,
+            indent: 8,
+            endIndent: 8,
             color: WantrTheme.undiscovered,
           ),
           // Animated center/north button
-          Material(
-            color: Colors.transparent,
-            child: InkWell(
-              onTap: _handleCenterPress,
-              borderRadius: BorderRadius.circular(12),
-              child: SizedBox(
-                width: 48,
-                height: 48,
-                child: AnimatedBuilder(
-                  animation: _rotationAnimation,
-                  builder: (context, child) {
-                    return Transform.rotate(
-                      angle: _rotationAnimation.value * 2 * 3.14159, // Full rotation
-                      child: Icon(
-                        _isResettingNorth 
-                            ? Icons.explore 
-                            : (widget.isFollowing ? Icons.navigation : Icons.my_location),
-                        color: widget.isFollowing 
-                            ? WantrTheme.accent 
-                            : WantrTheme.textPrimary,
-                        size: 24,
-                      ),
-                    );
-                  },
-                ),
+          AnimatedTapContainer(
+            onTap: _handleCenterPress,
+            child: SizedBox(
+              width: 56,
+              height: 56,
+              child: AnimatedBuilder(
+                animation: _rotationAnimation,
+                builder: (context, child) {
+                  return Transform.rotate(
+                    angle: _rotationAnimation.value * 2 * 3.14159, // Full rotation
+                    child: Icon(
+                      _isResettingNorth 
+                          ? Icons.explore 
+                          : (widget.isFollowing ? Icons.navigation : Icons.my_location),
+                      color: widget.isFollowing 
+                          ? WantrTheme.accent 
+                          : WantrTheme.textPrimary,
+                      size: 26,
+                    ),
+                  );
+                },
               ),
             ),
           ),
@@ -127,29 +137,23 @@ class _MapControlsState extends State<MapControls> with SingleTickerProviderStat
 class _ControlButton extends StatelessWidget {
   final IconData icon;
   final VoidCallback onPressed;
-  final bool isActive;
 
   const _ControlButton({
     required this.icon,
     required this.onPressed,
-    this.isActive = false,
   });
 
   @override
   Widget build(BuildContext context) {
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onPressed,
-        borderRadius: BorderRadius.circular(12),
-        child: SizedBox(
-          width: 48,
-          height: 48,
-          child: Icon(
-            icon,
-            color: isActive ? WantrTheme.accent : WantrTheme.textPrimary,
-            size: 24,
-          ),
+    return AnimatedTapContainer(
+      onTap: onPressed,
+      child: SizedBox(
+        width: 56,
+        height: 56,
+        child: Icon(
+          icon,
+          color: WantrTheme.textPrimary,
+          size: 26,
         ),
       ),
     );

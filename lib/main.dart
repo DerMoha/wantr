@@ -116,8 +116,20 @@ class _WantrHomeState extends State<WantrHome> {
   }
 
   Future<void> _initializeGame() async {
-    // Give the provider time to initialize
-    await Future.delayed(const Duration(milliseconds: 500));
+    final gameProvider = context.read<GameProvider>();
+    
+    // Check if already initialized
+    if (gameProvider.isInitialized) {
+      if (mounted) setState(() => _isLoading = false);
+      return;
+    }
+
+    // Wait for provider to initialize
+    // We also keep the 500ms minimum for splash feeling
+    await Future.wait([
+      gameProvider.initialize(),
+      Future.delayed(const Duration(milliseconds: 800)),
+    ]);
     
     if (mounted) {
       setState(() => _isLoading = false);

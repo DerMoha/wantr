@@ -43,6 +43,9 @@ class TeamService {
       'teamId': teamRef.id,
     });
 
+    // Update cache
+    _authService.updateCachedTeamId(teamRef.id);
+
     debugPrint('✅ Created team "$teamName" with code: $inviteCode');
     return teamRef.id;
   }
@@ -94,6 +97,9 @@ class TeamService {
       'teamId': teamDoc.id,
     });
 
+    // Update cache
+    _authService.updateCachedTeamId(teamDoc.id);
+
     debugPrint('✅ Joined team "${teamData['name']}"');
     return true;
   }
@@ -140,6 +146,9 @@ class TeamService {
     await _firestore.collection('users').doc(userId).update({
       'teamId': null,
     });
+
+    // Update cache
+    _authService.updateCachedTeamId(null);
 
     debugPrint('👋 Left team');
     return true;
