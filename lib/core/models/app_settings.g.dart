@@ -16,23 +16,25 @@ class AppSettingsAdapter extends TypeAdapter<AppSettings> {
     final fields = <int, dynamic>{
       for (int i = 0; i < numOfFields; i++) reader.readByte(): reader.read(),
     };
-    return AppSettings(
-      gpsModeIndex: fields[0] as int,
-      showDebugInfo: fields[1] as bool,
-      wifiOnlySync: fields[2] as bool,
-    );
+    return AppSettings()
+      .._gpsModeIndex = fields[0] as int?
+      .._showDebugInfo = fields[1] as bool?
+      .._wifiOnlySync = fields[2] as bool?
+      .._hasSeenOnboarding = fields[3] as bool?;
   }
 
   @override
   void write(BinaryWriter writer, AppSettings obj) {
     writer
-      ..writeByte(3)
+      ..writeByte(4)
       ..writeByte(0)
-      ..write(obj.gpsModeIndex)
+      ..write(obj._gpsModeIndex)
       ..writeByte(1)
-      ..write(obj.showDebugInfo)
+      ..write(obj._showDebugInfo)
       ..writeByte(2)
-      ..write(obj.wifiOnlySync);
+      ..write(obj._wifiOnlySync)
+      ..writeByte(3)
+      ..write(obj._hasSeenOnboarding);
   }
 
   @override

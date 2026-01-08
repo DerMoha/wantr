@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import '../../core/providers/game_provider.dart';
 import '../../core/theme/app_theme.dart';
+import 'level_info_dialog.dart';
 
-/// Resource bar showing gold, XP, and other resources at top of screen
+/// Resource bar with "Explorer's Chronicle" aesthetic
+/// Shows level, gold, discovery points, and trade goods in a parchment-style banner
 class ResourceBar extends StatelessWidget {
   const ResourceBar({super.key});
 
@@ -16,89 +19,128 @@ class ResourceBar extends StatelessWidget {
 
         return Container(
           margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-          decoration: BoxDecoration(
-            color: WantrTheme.surface.withOpacity(0.9),
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(
-              color: WantrTheme.undiscovered.withOpacity(0.5),
-              width: 1.5,
-            ),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.25),
-                blurRadius: 12,
-                spreadRadius: 1,
-                offset: const Offset(0, 4),
-              ),
-            ],
-          ),
-          child: Row(
+          child: Stack(
             children: [
-              // Level badge
+              // Main bar container
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                 decoration: BoxDecoration(
-                  color: WantrTheme.discovered.withOpacity(0.15),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(
-                    color: WantrTheme.discovered.withOpacity(0.3),
-                    width: 1,
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      WantrTheme.surface.withOpacity(0.95),
+                      WantrTheme.backgroundAlt.withOpacity(0.95),
+                    ],
                   ),
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(
+                    color: WantrTheme.brass.withOpacity(0.4),
+                    width: 1.5,
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: WantrTheme.shadowDeep.withOpacity(0.6),
+                      blurRadius: 20,
+                      spreadRadius: 2,
+                      offset: const Offset(0, 6),
+                    ),
+                    BoxShadow(
+                      color: WantrTheme.brass.withOpacity(0.1),
+                      blurRadius: 8,
+                      spreadRadius: -2,
+                      offset: const Offset(0, -2),
+                    ),
+                  ],
                 ),
                 child: Row(
-                  mainAxisSize: MainAxisSize.min,
                   children: [
-                    Text(
-                      'Lv.${state.level}',
-                      style: const TextStyle(
-                        color: WantrTheme.discovered,
-                        fontWeight: FontWeight.bold,
-                        fontSize: 13,
+                    // Level badge with compass motif (tappable)
+                    GestureDetector(
+                      onTap: () {
+                        showDialog(
+                          context: context,
+                          builder: (_) => const LevelInfoDialog(),
+                        );
+                      },
+                      child: _LevelBadge(
+                        level: state.level,
+                        progress: state.levelProgress,
                       ),
                     ),
-                    const SizedBox(width: 8),
-                    SizedBox(
-                      width: 40,
-                      child: ClipRRect(
-                        borderRadius: BorderRadius.circular(4),
-                        child: LinearProgressIndicator(
-                          value: state.levelProgress,
-                          backgroundColor: WantrTheme.undiscovered.withOpacity(0.5),
-                          valueColor: const AlwaysStoppedAnimation<Color>(
-                            WantrTheme.discovered,
-                          ),
-                          minHeight: 4,
+
+                    const SizedBox(width: 16),
+
+                    // Decorative divider
+                    Container(
+                      width: 1,
+                      height: 32,
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                          colors: [
+                            WantrTheme.brass.withOpacity(0.0),
+                            WantrTheme.brass.withOpacity(0.5),
+                            WantrTheme.brass.withOpacity(0.0),
+                          ],
                         ),
                       ),
                     ),
+
+                    const SizedBox(width: 12),
+
+                    // Resources row
+                    Expanded(
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                        children: [
+                          _ResourceItem(
+                            icon: Icons.monetization_on_outlined,
+                            value: _formatNumber(state.gold),
+                            label: 'GOLD',
+                            color: WantrTheme.gold,
+                            capacity: gameProvider.getResourceCapacity('gold'),
+                            currentValue: state.gold,
+                          ),
+                          _ResourceItem(
+                            icon: Icons.explore_outlined,
+                            value: _formatNumber(state.discoveryPoints),
+                            label: 'FINDS',
+                            color: WantrTheme.brass,
+                          ),
+                          _ResourceItem(
+                            icon: Icons.inventory_2_outlined,
+                            value: _formatNumber(state.tradeGoods),
+                            label: 'GOODS',
+                            color: WantrTheme.copper,
+                            capacity: gameProvider.getResourceCapacity('tradeGoods'),
+                            currentValue: state.tradeGoods,
+                          ),
+                        ],
+                      ),
+                    ),
                   ],
                 ),
               ),
-              
-              const SizedBox(width: 12),
-              
-              // Resources
-              Expanded(
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceAround,
-                  children: [
-                    _ResourceItem(
-                      icon: '🪙',
-                      value: _formatNumber(state.gold),
-                      color: WantrTheme.gold,
-                    ),
-                    _ResourceItem(
-                      icon: '🔍',
-                      value: _formatNumber(state.discoveryPoints),
-                      color: WantrTheme.accent,
-                    ),
-                    _ResourceItem(
-                      icon: '📦',
-                      value: _formatNumber(state.tradeGoods),
-                      color: WantrTheme.energy,
-                    ),
-                  ],
+
+              // Corner ornaments
+              Positioned(
+                top: 4,
+                left: 4,
+                child: CartographicDecorations.cornerOrnament(
+                  position: CornerPosition.topLeft,
+                  size: 16,
+                  color: WantrTheme.brass.withOpacity(0.5),
+                ),
+              ),
+              Positioned(
+                top: 4,
+                right: 4,
+                child: CartographicDecorations.cornerOrnament(
+                  position: CornerPosition.topRight,
+                  size: 16,
+                  color: WantrTheme.brass.withOpacity(0.5),
                 ),
               ),
             ],
@@ -118,33 +160,155 @@ class ResourceBar extends StatelessWidget {
   }
 }
 
-class _ResourceItem extends StatelessWidget {
-  final String icon;
-  final String value;
-  final Color color;
+/// Level badge with circular progress and compass-like design
+class _LevelBadge extends StatelessWidget {
+  final int level;
+  final double progress;
 
-  const _ResourceItem({
-    required this.icon,
-    required this.value,
-    required this.color,
+  const _LevelBadge({
+    required this.level,
+    required this.progress,
   });
 
   @override
   Widget build(BuildContext context) {
-    return Row(
+    return Container(
+      width: 56,
+      height: 56,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        gradient: RadialGradient(
+          colors: [
+            WantrTheme.surfaceElevated,
+            WantrTheme.surface,
+          ],
+        ),
+        border: Border.all(
+          color: WantrTheme.brass.withOpacity(0.6),
+          width: 2,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: WantrTheme.brass.withOpacity(0.2),
+            blurRadius: 8,
+            spreadRadius: 1,
+          ),
+        ],
+      ),
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          // Progress ring
+          SizedBox(
+            width: 48,
+            height: 48,
+            child: CircularProgressIndicator(
+              value: progress,
+              strokeWidth: 3,
+              backgroundColor: WantrTheme.undiscovered.withOpacity(0.4),
+              valueColor: const AlwaysStoppedAnimation<Color>(WantrTheme.brass),
+            ),
+          ),
+
+          // Level number
+          Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                '$level',
+                style: GoogleFonts.cormorant(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: WantrTheme.brass,
+                  height: 1,
+                ),
+              ),
+              Text(
+                'LVL',
+                style: GoogleFonts.crimsonPro(
+                  fontSize: 8,
+                  fontWeight: FontWeight.w600,
+                  color: WantrTheme.textMuted,
+                  letterSpacing: 1.5,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Individual resource display with icon, value, and label
+class _ResourceItem extends StatelessWidget {
+  final IconData icon;
+  final String value;
+  final String label;
+  final Color color;
+  final int? capacity;
+  final int? currentValue;
+
+  const _ResourceItem({
+    required this.icon,
+    required this.value,
+    required this.label,
+    required this.color,
+    this.capacity,
+    this.currentValue,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    // Show capacity warning when >80% full
+    final showCapacity = capacity != null &&
+        currentValue != null &&
+        currentValue! > capacity! * 0.8;
+
+    return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Text(icon, style: const TextStyle(fontSize: 14)),
-        const SizedBox(width: 6),
-        Text(
-          value,
-          style: TextStyle(
-            color: color,
-            fontWeight: FontWeight.w700,
-            fontSize: 13,
-            letterSpacing: 0.5,
-          ),
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              icon,
+              size: 16,
+              color: color,
+            ),
+            const SizedBox(width: 4),
+            Text(
+              value,
+              style: GoogleFonts.jetBrainsMono(
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+                color: color,
+                letterSpacing: -0.5,
+              ),
+            ),
+          ],
         ),
+        const SizedBox(height: 2),
+        if (showCapacity)
+          Text(
+            '/ $capacity',
+            style: GoogleFonts.jetBrainsMono(
+              fontSize: 9,
+              fontWeight: FontWeight.w500,
+              color: WantrTheme.warning,
+              letterSpacing: -0.3,
+            ),
+          )
+        else
+          Text(
+            label,
+            style: GoogleFonts.crimsonPro(
+              fontSize: 9,
+              fontWeight: FontWeight.w600,
+              color: WantrTheme.textMuted,
+              letterSpacing: 1.2,
+            ),
+          ),
       ],
     );
   }

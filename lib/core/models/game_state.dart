@@ -5,6 +5,12 @@ part 'game_state.g.dart';
 /// Player's game state - persisted locally
 @HiveType(typeId: 0)
 class GameState extends HiveObject {
+  /// Base resource capacities (before warehouse bonuses)
+  static const int baseGoldCapacity = 1000;
+  static const int baseTradeGoodsCapacity = 500;
+  static const int baseMaterialsCapacity = 500;
+  static const int baseEnergyCapacity = 100; // Fixed, not increased by warehouses
+
   @HiveField(0)
   String playerId;
 
@@ -116,6 +122,44 @@ class GameState extends HiveObject {
     gold -= amount;
     lastActiveAt = DateTime.now();
     return true;
+  }
+
+  /// Spend trade goods (returns false if not enough)
+  bool spendTradeGoods(int amount) {
+    if (tradeGoods < amount) return false;
+    tradeGoods -= amount;
+    lastActiveAt = DateTime.now();
+    return true;
+  }
+
+  /// Add trade goods (with optional capacity cap)
+  void addTradeGoods(int amount, {int? capacity}) {
+    if (capacity != null) {
+      tradeGoods = (tradeGoods + amount).clamp(0, capacity);
+    } else {
+      tradeGoods += amount;
+    }
+    lastActiveAt = DateTime.now();
+  }
+
+  /// Add materials (with optional capacity cap)
+  void addMaterials(int amount, {int? capacity}) {
+    if (capacity != null) {
+      materials = (materials + amount).clamp(0, capacity);
+    } else {
+      materials += amount;
+    }
+    lastActiveAt = DateTime.now();
+  }
+
+  /// Add gold (with optional capacity cap)
+  void addGoldCapped(int amount, {int? capacity}) {
+    if (capacity != null) {
+      gold = (gold + amount).clamp(0, capacity);
+    } else {
+      gold += amount;
+    }
+    lastActiveAt = DateTime.now();
   }
 
   /// Record a discovered street

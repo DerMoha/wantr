@@ -1,3 +1,5 @@
+import 'dart:math';
+
 import 'package:hive/hive.dart';
 import 'package:latlong2/latlong.dart';
 
@@ -28,6 +30,9 @@ enum OutpostType {
 /// Represents a player-built outpost
 @HiveType(typeId: 2)
 class Outpost extends HiveObject {
+  /// Maximum level an outpost can reach
+  static const int maxLevel = 10;
+
   @HiveField(0)
   String id;
 
@@ -111,11 +116,68 @@ class Outpost extends HiveObject {
     return baseCost * level;
   }
 
-  /// Calculate accumulated resources since last collection
+  /// Get required player level to unlock this outpost type
+  static int getRequiredLevel(OutpostType type) {
+    return switch (type) {
+      OutpostType.tradingPost => 1,  // Available from start
+      OutpostType.warehouse => 3,
+      OutpostType.bank => 5,
+      OutpostType.workshop => 8,
+      OutpostType.inn => 12,
+      OutpostType.scoutTower => 15,
+    };
+  }
+
+  /// Check if outpost type is unlocked at given player level
+  static bool isUnlocked(OutpostType type, int playerLevel) {
+    return playerLevel >= getRequiredLevel(type);
+  }
+
+  /// Get icon for outpost type (static version)
+  static String getIcon(OutpostType type) {
+    return switch (type) {
+      OutpostType.tradingPost => '🏪',
+      OutpostType.warehouse => '🏭',
+      OutpostType.workshop => '⚒️',
+      OutpostType.inn => '🏨',
+      OutpostType.bank => '🏦',
+      OutpostType.scoutTower => '🗼',
+    };
+  }
+
+  /// Get type name (static version)
+  static String getTypeName(OutpostType type) {
+    return switch (type) {
+      OutpostType.tradingPost => 'Trading Post',
+      OutpostType.warehouse => 'Warehouse',
+      OutpostType.workshop => 'Workshop',
+      OutpostType.inn => 'Inn',
+      OutpostType.bank => 'Bank',
+      OutpostType.scoutTower => 'Scout Tower',
+    };
+  }
+
+  /// Get type description
+  static String getTypeDescription(OutpostType type) {
+    return switch (type) {
+      OutpostType.tradingPost => 'Produces trade goods over time',
+      OutpostType.warehouse => 'Increases storage capacity',
+      OutpostType.workshop => 'Produces materials for crafting',
+      OutpostType.inn => 'Restores energy over time',
+      OutpostType.bank => 'Generates passive gold income',
+      OutpostType.scoutTower => 'Reveals nearby streets',
+    };
+  }
+
+  /// Maximum accumulation (cap at 24 hours of production)
+  int get maxAccumulation => productionPerHour * 24;
+
+  /// Calculate accumulated resources since last collection (capped at 24 hours)
   int calculateAccumulatedResources() {
-    final hoursSinceCollection = 
+    if (productionPerHour == 0) return 0;
+    final hoursSinceCollection =
         DateTime.now().difference(lastCollectedAt).inMinutes / 60.0;
-    return (productionPerHour * hoursSinceCollection).floor();
+    return min((productionPerHour * hoursSinceCollection).floor(), maxAccumulation);
   }
 
   /// Collect resources and reset timer
@@ -124,4 +186,37 @@ class Outpost extends HiveObject {
     lastCollectedAt = DateTime.now();
     return amount;
   }
+
+  /// Check if resources are ready to collect
+  bool get hasResourcesToCollect => calculateAccumulatedResources() > 0;
+
+  /// Get gold cost for upgrading to next level
+  static int getUpgradeGoldCost(OutpostType type, int currentLevel) {
+    return getCost(type, currentLevel + 1);
+  }
+
+  /// Get trade goods cost for upgrading
+  static int getUpgradeTradeGoodsCost(int currentLevel) {
+    return currentLevel * 10;
+  }
+
+  /// Human-readable type name
+  String get typeName => switch (type) {
+    OutpostType.tradingPost => 'Trading Post',
+    OutpostType.warehouse => 'Warehouse',
+    OutpostType.workshop => 'Workshop',
+    OutpostType.inn => 'Inn',
+    OutpostType.bank => 'Bank',
+    OutpostType.scoutTower => 'Scout Tower',
+  };
+
+  /// Production description for display
+  String get productionDescription => switch (type) {
+    OutpostType.tradingPost => '+$productionPerHour goods/hr',
+    OutpostType.warehouse => '+${500 * level} capacity',
+    OutpostType.workshop => '+$productionPerHour materials/hr',
+    OutpostType.inn => '+$productionPerHour energy/hr',
+    OutpostType.bank => '+$productionPerHour gold/hr',
+    OutpostType.scoutTower => 'Reveals nearby streets',
+  };
 }

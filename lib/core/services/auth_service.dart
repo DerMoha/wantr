@@ -49,9 +49,10 @@ class AuthService {
   }
 
   /// Link anonymous account to Google
+  /// Throws specific error messages for common failure cases
   Future<UserCredential?> linkWithGoogle() async {
     if (!isAnonymous) return null;
-    
+
     try {
       final GoogleSignInAccount? googleUser = await _googleSignIn.signIn();
       if (googleUser == null) return null;
@@ -63,7 +64,7 @@ class AuthService {
       );
 
       final userCredential = await currentUser!.linkWithCredential(credential);
-      
+
       // Update user document with Google info
       await _firestore.collection('users').doc(userId).update({
         'displayName': googleUser.displayName ?? 'Wanderer',
@@ -71,9 +72,19 @@ class AuthService {
         'photoUrl': googleUser.photoUrl,
         'isAnonymous': false,
       });
-      
+
       debugPrint('✅ Linked account to ${googleUser.displayName}');
       return userCredential;
+    } on FirebaseAuthException catch (e) {
+      if (e.code == 'credential-already-in-use') {
+        debugPrint('❌ Google account already linked to another user');
+        throw Exception('This Google account is already linked to another user. Please use a different Google account or sign in with that account instead.');
+      } else if (e.code == 'email-already-in-use') {
+        debugPrint('❌ Email already in use');
+        throw Exception('An account with this email already exists. Please sign in with that account instead.');
+      }
+      debugPrint('❌ Link with Google error: $e');
+      rethrow;
     } catch (e) {
       debugPrint('❌ Link with Google error: $e');
       rethrow;

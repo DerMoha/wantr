@@ -13,19 +13,38 @@ enum GpsMode {
 @HiveType(typeId: 5)
 class AppSettings extends HiveObject {
   @HiveField(0)
-  int gpsModeIndex;
+  int? _gpsModeIndex;
 
   @HiveField(1)
-  bool showDebugInfo;
+  bool? _showDebugInfo;
 
   @HiveField(2)
-  bool wifiOnlySync; // Only sync to cloud when on WiFi
+  bool? _wifiOnlySync;
+
+  @HiveField(3)
+  bool? _hasSeenOnboarding;
 
   AppSettings({
-    this.gpsModeIndex = 0, // Default to batterySaver
-    this.showDebugInfo = false,
-    this.wifiOnlySync = false, // Default to sync on any network
-  });
+    int gpsModeIndex = 0,
+    bool showDebugInfo = false,
+    bool wifiOnlySync = false,
+    bool hasSeenOnboarding = false,
+  }) : _gpsModeIndex = gpsModeIndex,
+       _showDebugInfo = showDebugInfo,
+       _wifiOnlySync = wifiOnlySync,
+       _hasSeenOnboarding = hasSeenOnboarding;
+
+  int get gpsModeIndex => _gpsModeIndex ?? 0;
+  set gpsModeIndex(int value) => _gpsModeIndex = value;
+
+  bool get showDebugInfo => _showDebugInfo ?? false;
+  set showDebugInfo(bool value) => _showDebugInfo = value;
+
+  bool get wifiOnlySync => _wifiOnlySync ?? false;
+  set wifiOnlySync(bool value) => _wifiOnlySync = value;
+
+  bool get hasSeenOnboarding => _hasSeenOnboarding ?? false;
+  set hasSeenOnboarding(bool value) => _hasSeenOnboarding = value;
 
   GpsMode get gpsMode => GpsMode.values[gpsModeIndex];
   set gpsMode(GpsMode mode) => gpsModeIndex = mode.index;
