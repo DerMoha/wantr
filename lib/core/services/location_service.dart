@@ -34,6 +34,7 @@ class LocationService {
   static const double _maxAccuracyMeters =
       50.0; // Reject readings with accuracy > 50m
   static const double _maxSpeedMps = 25.0; // ~90 km/h - reject teleportation
+  static const Duration _currentLocationTimeout = Duration(seconds: 8);
 
   /// Stream of location updates (only high-quality readings)
   Stream<LatLng> get locationStream => _locationController.stream;
@@ -84,6 +85,7 @@ class LocationService {
       final position = await Geolocator.getCurrentPosition(
         locationSettings: const LocationSettings(
           accuracy: LocationAccuracy.high,
+          timeLimit: _currentLocationTimeout,
         ),
       );
 
@@ -98,6 +100,9 @@ class LocationService {
       _lastPosition = LatLng(position.latitude, position.longitude);
       _lastTimestamp = DateTime.now();
       _lastAccuracyMeters = position.accuracy;
+      return _lastPosition;
+    } on TimeoutException {
+      debugPrint('Error getting location: timed out waiting for GPS fix');
       return _lastPosition;
     } catch (e) {
       debugPrint('Error getting location: $e');

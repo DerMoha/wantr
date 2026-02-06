@@ -433,12 +433,8 @@ class GameProvider extends ChangeNotifier {
 
     // If this provider is already subscribed, keep the existing stream listener.
     if (_locationSubscription != null) {
-      _currentLocation ??= await _locationService.getCurrentLocation();
+      unawaited(_primeInitialLocationAndStreets());
       _refreshLocatingState();
-      if (_currentLocation != null && _osmService.cachedStreets.isEmpty) {
-        await _fetchStreetsForArea(_currentLocation!);
-        _lastOsmFetchLocation = _currentLocation;
-      }
       notifyListeners();
       return;
     }
@@ -490,23 +486,43 @@ class GameProvider extends ChangeNotifier {
       _locationSubscription = _locationService.locationStream.listen(
         _handleLocationUpdate,
       );
+      unawaited(_primeInitialLocationAndStreets());
     }
 
-    // Get initial location
-    _currentLocation ??= await _locationService.getCurrentLocation();
     _refreshLocatingState();
-
-    // Fetch OSM streets for area if cache is empty
-    if (_currentLocation != null && _osmService.cachedStreets.isEmpty) {
-      await _fetchStreetsForArea(_currentLocation!);
-      _lastOsmFetchLocation = _currentLocation;
-    }
 
     notifyListeners();
   }
 
   void _refreshLocatingState() {
     _isLocating = _locationService.isTracking && !hasAccurateLocation;
+  }
+
+  /// Prime the current location and nearby streets without blocking startTracking.
+  Future<void> _primeInitialLocationAndStreets() async {
+    try {
+      final initialLocation =
+          _currentLocation ?? await _locationService.getCurrentLocation();
+      if (initialLocation == null) {
+        _refreshLocatingState();
+        notifyListeners();
+        return;
+      }
+
+      _currentLocation = initialLocation;
+      _refreshLocatingState();
+
+      if (_osmService.cachedStreets.isEmpty) {
+        await _fetchStreetsForArea(initialLocation);
+        _lastOsmFetchLocation = initialLocation;
+      } else {
+        _lastOsmFetchLocation ??= initialLocation;
+      }
+
+      notifyListeners();
+    } catch (e) {
+      debugPrint('⚠️ Failed to prime initial location: $e');
+    }
   }
 
   /// Fetch OSM street data for an area
