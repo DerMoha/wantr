@@ -54,7 +54,11 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   @override
   void initState() {
     super.initState();
-    _initializeLocation();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        _initializeLocation();
+      }
+    });
     _initializeConnectivity();
     _checkFirstLaunch();
 
