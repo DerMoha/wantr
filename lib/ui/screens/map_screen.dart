@@ -49,6 +49,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   LatLng? _lastFollowedLocation;
   bool _showStats = false;
   bool _isOnline = true;
+  bool _isTogglingTracking = false;
 
   @override
   void initState() {
@@ -153,6 +154,38 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     if (location != null) {
       _mapController.move(location, 16.0);
       _lastFollowedLocation = location;
+    }
+  }
+
+  Future<void> _toggleTracking() async {
+    if (_isTogglingTracking) return;
+
+    final gameProvider = context.read<GameProvider>();
+    final wasTracking = gameProvider.isTracking;
+
+    setState(() => _isTogglingTracking = true);
+
+    try {
+      if (wasTracking) {
+        await gameProvider.stopTracking();
+      } else {
+        await gameProvider.startTracking();
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isTogglingTracking = false);
+      }
+    }
+
+    if (!mounted) return;
+
+    final didStart = gameProvider.isTracking;
+    final didStop = !gameProvider.isTracking;
+
+    if (!wasTracking && didStart) {
+      HapticFeedback.mediumImpact();
+    } else if (wasTracking && didStop) {
+      HapticFeedback.lightImpact();
     }
   }
 
@@ -520,10 +553,15 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                 child: Center(
                   child: _TrackingIndicator(
                     isTracking: gameProvider.isTracking,
+                    isLocating: gameProvider.isLocating,
+                    hasAccurateLocation: gameProvider.hasAccurateLocation,
+                    accuracyMeters: gameProvider.locationAccuracyMeters,
                     streetCount: discoveredStreetCount,
                     pulseAnimation: _pulseAnimation,
                     pendingSyncCount:
                         gameProvider.cloudSyncService.pendingSyncCount,
+                    isBusy: _isTogglingTracking,
+                    onTap: _toggleTracking,
                   ),
                 ),
               ),
@@ -958,171 +996,253 @@ class _NavigationButton extends StatelessWidget {
 /// Tracking indicator styled as a cartographer's status badge
 class _TrackingIndicator extends StatelessWidget {
   final bool isTracking;
+  final bool isLocating;
+  final bool hasAccurateLocation;
+  final double? accuracyMeters;
   final int streetCount;
   final Animation<double> pulseAnimation;
   final int pendingSyncCount;
+  final bool isBusy;
+  final VoidCallback onTap;
 
   const _TrackingIndicator({
     required this.isTracking,
+    required this.isLocating,
+    required this.hasAccurateLocation,
+    required this.accuracyMeters,
     required this.streetCount,
     required this.pulseAnimation,
     required this.pendingSyncCount,
+    required this.isBusy,
+    required this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [
-            WantrTheme.surface.withOpacity(0.95),
-            WantrTheme.backgroundAlt.withOpacity(0.95),
-          ],
-        ),
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(
-          color: isTracking
-              ? WantrTheme.tracking.withOpacity(0.5)
-              : WantrTheme.brass.withOpacity(0.3),
-          width: 1.5,
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: WantrTheme.shadowDeep.withOpacity(0.4),
-            blurRadius: 16,
-            spreadRadius: 1,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          // Animated status indicator
-          AnimatedBuilder(
-            animation: pulseAnimation,
-            builder: (context, child) {
-              return Container(
-                width: 10,
-                height: 10,
-                decoration: BoxDecoration(
-                  color:
-                      (isTracking ? WantrTheme.tracking : WantrTheme.textMuted)
-                          .withOpacity(pulseAnimation.value),
-                  shape: BoxShape.circle,
-                  boxShadow: [
-                    if (isTracking)
-                      BoxShadow(
-                        color: WantrTheme.tracking.withOpacity(
-                          0.4 * pulseAnimation.value,
-                        ),
-                        blurRadius: 8,
-                        spreadRadius: 2,
-                      ),
-                  ],
-                ),
-              );
-            },
-          ),
+    final trackingReady = isTracking && hasAccurateLocation && !isLocating;
+    final locatingNow = isTracking && !trackingReady;
 
-          const SizedBox(width: 10),
+    final statusColor = trackingReady
+        ? WantrTheme.tracking
+        : locatingNow
+        ? WantrTheme.warning
+        : WantrTheme.brass;
 
-          Text(
-            isTracking ? 'CHARTING' : 'PAUSED',
-            style: GoogleFonts.cormorant(
-              fontSize: 13,
-              fontWeight: FontWeight.w700,
-              color: isTracking ? WantrTheme.tracking : WantrTheme.textMuted,
-              letterSpacing: 2.0,
+    final icon = trackingReady
+        ? Icons.gps_fixed_rounded
+        : locatingNow
+        ? Icons.gps_not_fixed_rounded
+        : Icons.play_arrow_rounded;
+
+    final title = isBusy
+        ? 'UPDATING'
+        : trackingReady
+        ? 'TRACKING'
+        : locatingNow
+        ? 'LOCATING'
+        : 'START TRACKING';
+
+    final subtitle = trackingReady
+        ? accuracyMeters != null
+              ? 'GPS lock ±${accuracyMeters!.round()}m'
+              : 'GPS lock active'
+        : locatingNow
+        ? 'Finding accurate position...'
+        : 'Tap to begin charting';
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: isBusy ? null : onTap,
+        borderRadius: BorderRadius.circular(28),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 220),
+          curve: Curves.easeOutCubic,
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [
+                WantrTheme.surface.withOpacity(0.96),
+                Color.lerp(
+                  WantrTheme.backgroundAlt,
+                  statusColor,
+                  locatingNow ? 0.2 : 0.14,
+                )!.withOpacity(0.94),
+              ],
             ),
+            borderRadius: BorderRadius.circular(28),
+            border: Border.all(
+              color: statusColor.withOpacity(trackingReady ? 0.65 : 0.45),
+              width: 1.6,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: WantrTheme.shadowDeep.withOpacity(0.45),
+                blurRadius: 16,
+                spreadRadius: 1,
+                offset: const Offset(0, 4),
+              ),
+              BoxShadow(
+                color: statusColor.withOpacity(
+                  trackingReady
+                      ? 0.24
+                      : locatingNow
+                      ? 0.2
+                      : 0.12,
+                ),
+                blurRadius: 18,
+                spreadRadius: 1,
+              ),
+            ],
           ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              AnimatedBuilder(
+                animation: pulseAnimation,
+                builder: (context, child) {
+                  final pulseValue = locatingNow || trackingReady
+                      ? 0.75 + (pulseAnimation.value * 0.35)
+                      : 1.0;
 
-          const SizedBox(width: 14),
-
-          // Decorative separator
-          Container(
-            width: 1,
-            height: 14,
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: [
-                  WantrTheme.brass.withOpacity(0.0),
-                  WantrTheme.brass.withOpacity(0.4),
-                  WantrTheme.brass.withOpacity(0.0),
+                  return Stack(
+                    alignment: Alignment.center,
+                    children: [
+                      if (locatingNow || trackingReady)
+                        Container(
+                          width: 36 * pulseValue,
+                          height: 36 * pulseValue,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: statusColor.withOpacity(0.12),
+                          ),
+                        ),
+                      Container(
+                        width: 34,
+                        height: 34,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: statusColor.withOpacity(0.18),
+                          border: Border.all(
+                            color: statusColor.withOpacity(0.6),
+                            width: 1.2,
+                          ),
+                        ),
+                        child: Icon(icon, size: 18, color: statusColor),
+                      ),
+                    ],
+                  );
+                },
+              ),
+              const SizedBox(width: 10),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    title,
+                    style: GoogleFonts.cormorant(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                      color: statusColor,
+                      letterSpacing: 1.6,
+                    ),
+                  ),
+                  Text(
+                    subtitle,
+                    style: GoogleFonts.crimsonPro(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                      color: WantrTheme.textSecondary,
+                    ),
+                  ),
                 ],
               ),
-            ),
-          ),
-
-          const SizedBox(width: 14),
-
-          Text(
-            '$streetCount',
-            style: GoogleFonts.jetBrainsMono(
-              fontSize: 14,
-              fontWeight: FontWeight.w600,
-              color: WantrTheme.brass,
-            ),
-          ),
-
-          const SizedBox(width: 6),
-
-          Text(
-            'STREETS',
-            style: GoogleFonts.crimsonPro(
-              fontSize: 10,
-              fontWeight: FontWeight.w600,
-              color: WantrTheme.textMuted,
-              letterSpacing: 1.0,
-            ),
-          ),
-
-          // Pending sync indicator
-          if (pendingSyncCount > 0) ...[
-            const SizedBox(width: 14),
-
-            // Decorative separator
-            Container(
-              width: 1,
-              height: 14,
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [
-                    WantrTheme.brass.withOpacity(0.0),
-                    WantrTheme.brass.withOpacity(0.4),
-                    WantrTheme.brass.withOpacity(0.0),
+              const SizedBox(width: 12),
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 6,
+                ),
+                decoration: BoxDecoration(
+                  color: WantrTheme.background.withOpacity(0.35),
+                  borderRadius: BorderRadius.circular(18),
+                  border: Border.all(color: WantrTheme.brass.withOpacity(0.25)),
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      '$streetCount',
+                      style: GoogleFonts.jetBrainsMono(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                        color: WantrTheme.brass,
+                      ),
+                    ),
+                    Text(
+                      'STREETS',
+                      style: GoogleFonts.crimsonPro(
+                        fontSize: 9,
+                        fontWeight: FontWeight.w600,
+                        color: WantrTheme.textMuted,
+                        letterSpacing: 0.9,
+                      ),
+                    ),
                   ],
                 ),
               ),
-            ),
-
-            const SizedBox(width: 10),
-
-            Icon(
-              Icons.cloud_upload_outlined,
-              size: 14,
-              color: WantrTheme.copper,
-            ),
-
-            const SizedBox(width: 4),
-
-            Text(
-              '$pendingSyncCount',
-              style: GoogleFonts.jetBrainsMono(
-                fontSize: 12,
-                fontWeight: FontWeight.w500,
-                color: WantrTheme.copper,
-              ),
-            ),
-          ],
-        ],
+              if (pendingSyncCount > 0) ...[
+                const SizedBox(width: 8),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 6,
+                  ),
+                  decoration: BoxDecoration(
+                    color: WantrTheme.copper.withOpacity(0.14),
+                    borderRadius: BorderRadius.circular(18),
+                    border: Border.all(
+                      color: WantrTheme.copper.withOpacity(0.4),
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.cloud_upload_outlined,
+                        size: 13,
+                        color: WantrTheme.copperLight,
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        '$pendingSyncCount',
+                        style: GoogleFonts.jetBrainsMono(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          color: WantrTheme.copperLight,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+              if (isBusy) ...[
+                const SizedBox(width: 10),
+                SizedBox(
+                  width: 14,
+                  height: 14,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2.0,
+                    valueColor: AlwaysStoppedAnimation<Color>(statusColor),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
       ),
     );
   }

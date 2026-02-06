@@ -45,6 +45,7 @@ class GameProvider extends ChangeNotifier {
   _teamSegmentsSubscription; // New subscription for real-time team sync
   LatLng? _currentLocation;
   final List<LatLng> _currentWalkPath = [];
+  bool _isLocating = false;
 
   // Speed tracking for reward scaling
   DateTime? _lastLocationTimestamp;
@@ -136,6 +137,16 @@ class GameProvider extends ChangeNotifier {
 
   /// Whether location tracking is active
   bool get isTracking => _locationService.isTracking;
+
+  /// Whether tracking is running but waiting for a reliable GPS lock
+  bool get isLocating => _isLocating;
+
+  /// Whether we currently have a location fix that passed accuracy checks
+  bool get hasAccurateLocation =>
+      _currentLocation != null && _locationService.hasAccurateFix;
+
+  /// Most recent accepted GPS accuracy in meters
+  double? get locationAccuracyMeters => _locationService.lastAccuracyMeters;
 
   /// Location service for direct access
   LocationService get locationService => _locationService;
@@ -423,6 +434,7 @@ class GameProvider extends ChangeNotifier {
     // If this provider is already subscribed, keep the existing stream listener.
     if (_locationSubscription != null) {
       _currentLocation ??= await _locationService.getCurrentLocation();
+      _refreshLocatingState();
       if (_currentLocation != null && _osmService.cachedStreets.isEmpty) {
         await _fetchStreetsForArea(_currentLocation!);
         _lastOsmFetchLocation = _currentLocation;
@@ -430,6 +442,9 @@ class GameProvider extends ChangeNotifier {
       notifyListeners();
       return;
     }
+
+    _isLocating = true;
+    notifyListeners();
 
     // Load GPS settings
     final settingsBox = await Hive.openBox<dynamic>('app_settings');
@@ -479,6 +494,7 @@ class GameProvider extends ChangeNotifier {
 
     // Get initial location
     _currentLocation ??= await _locationService.getCurrentLocation();
+    _refreshLocatingState();
 
     // Fetch OSM streets for area if cache is empty
     if (_currentLocation != null && _osmService.cachedStreets.isEmpty) {
@@ -487,6 +503,10 @@ class GameProvider extends ChangeNotifier {
     }
 
     notifyListeners();
+  }
+
+  void _refreshLocatingState() {
+    _isLocating = _locationService.isTracking && !hasAccurateLocation;
   }
 
   /// Fetch OSM street data for an area
@@ -514,6 +534,7 @@ class GameProvider extends ChangeNotifier {
     _locationService.stopTracking();
     _locationSubscription?.cancel();
     _locationSubscription = null;
+    _isLocating = false;
 
     // Stop the live tracking notification
     await _notificationService.stopTracking();
@@ -529,6 +550,7 @@ class GameProvider extends ChangeNotifier {
 
     _currentLocation = newLocation;
     _lastLocationTimestamp = now;
+    _refreshLocatingState();
 
     // Calculate current speed
     if (previousLocation != null && previousTimestamp != null) {

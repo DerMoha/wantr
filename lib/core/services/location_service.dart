@@ -24,13 +24,15 @@ class LocationData {
 class LocationService {
   StreamSubscription<Position>? _positionSubscription;
   final _locationController = StreamController<LatLng>.broadcast();
-  
+
   LatLng? _lastPosition;
   DateTime? _lastTimestamp;
+  double? _lastAccuracyMeters;
   bool _isTracking = false;
-  
+
   // GPS quality thresholds
-  static const double _maxAccuracyMeters = 50.0; // Reject readings with accuracy > 50m
+  static const double _maxAccuracyMeters =
+      50.0; // Reject readings with accuracy > 50m
   static const double _maxSpeedMps = 25.0; // ~90 km/h - reject teleportation
 
   /// Stream of location updates (only high-quality readings)
@@ -38,6 +40,15 @@ class LocationService {
 
   /// Current position
   LatLng? get currentPosition => _lastPosition;
+
+  /// Most recent accepted GPS accuracy in meters
+  double? get lastAccuracyMeters => _lastAccuracyMeters;
+
+  /// Whether we have a recent fix that passed the accuracy threshold
+  bool get hasAccurateFix =>
+      _lastPosition != null &&
+      _lastAccuracyMeters != null &&
+      _lastAccuracyMeters! <= _maxAccuracyMeters;
 
   /// Whether tracking is active
   bool get isTracking => _isTracking;
@@ -78,12 +89,15 @@ class LocationService {
 
       // Check accuracy before accepting
       if (position.accuracy > _maxAccuracyMeters) {
-        debugPrint('📍 Rejected low-quality GPS: ${position.accuracy}m accuracy');
+        debugPrint(
+          '📍 Rejected low-quality GPS: ${position.accuracy}m accuracy',
+        );
         return _lastPosition; // Return last known good position
       }
 
       _lastPosition = LatLng(position.latitude, position.longitude);
       _lastTimestamp = DateTime.now();
+      _lastAccuracyMeters = position.accuracy;
       return _lastPosition;
     } catch (e) {
       debugPrint('Error getting location: $e');
@@ -97,7 +111,7 @@ class LocationService {
   /// [interval] - time between checks (default 5 seconds)
   /// [batterySaverMode] - if true, uses more battery-efficient settings
   Future<void> startTracking({
-    int distanceFilter = 10, 
+    int distanceFilter = 10,
     Duration interval = const Duration(seconds: 5),
     bool batterySaverMode = false,
   }) async {
@@ -110,14 +124,18 @@ class LocationService {
     }
 
     _isTracking = true;
-    debugPrint('📍 Started tracking: ${distanceFilter}m filter, ${interval.inSeconds}s interval, batterySaver=$batterySaverMode');
+    debugPrint(
+      '📍 Started tracking: ${distanceFilter}m filter, ${interval.inSeconds}s interval, batterySaver=$batterySaverMode',
+    );
 
     // Platform-specific location settings
     late LocationSettings locationSettings;
-    
+
     // Use lower accuracy in battery saver mode
-    final accuracy = batterySaverMode ? LocationAccuracy.medium : LocationAccuracy.high;
-    
+    final accuracy = batterySaverMode
+        ? LocationAccuracy.medium
+        : LocationAccuracy.high;
+
     if (defaultTargetPlatform == TargetPlatform.android) {
       // Android: Use foreground service for background tracking
       // Disable wake lock in battery saver mode to save more power
@@ -127,12 +145,16 @@ class LocationService {
         forceLocationManager: false,
         intervalDuration: interval,
         foregroundNotificationConfig: ForegroundNotificationConfig(
-          notificationText: batterySaverMode 
-              ? 'Wantr is tracking (battery saver)' 
+          notificationText: batterySaverMode
+              ? 'Wantr is tracking (battery saver)'
               : 'Wantr is tracking your exploration',
           notificationTitle: 'Exploring...',
-          enableWakeLock: !batterySaverMode, // Disable wake lock in battery saver
-          notificationIcon: const AndroidResource(name: 'ic_launcher', defType: 'mipmap'),
+          enableWakeLock:
+              !batterySaverMode, // Disable wake lock in battery saver
+          notificationIcon: const AndroidResource(
+            name: 'ic_launcher',
+            defType: 'mipmap',
+          ),
         ),
       );
     } else if (defaultTargetPlatform == TargetPlatform.iOS) {
@@ -142,7 +164,8 @@ class LocationService {
         accuracy: accuracy,
         distanceFilter: distanceFilter,
         activityType: ActivityType.fitness,
-        pauseLocationUpdatesAutomatically: true, // Let iOS pause when stationary
+        pauseLocationUpdatesAutomatically:
+            true, // Let iOS pause when stationary
         showBackgroundLocationIndicator: true,
         allowBackgroundLocationUpdates: true,
       );
@@ -154,29 +177,30 @@ class LocationService {
       );
     }
 
-    _positionSubscription = Geolocator.getPositionStream(
-      locationSettings: locationSettings,
-    ).listen(
-      (Position position) {
-        _processPosition(position);
-      },
-      onError: (error) {
-        debugPrint('Location stream error: $error');
-      },
-    );
+    _positionSubscription =
+        Geolocator.getPositionStream(locationSettings: locationSettings).listen(
+          (Position position) {
+            _processPosition(position);
+          },
+          onError: (error) {
+            debugPrint('Location stream error: $error');
+          },
+        );
   }
 
   /// Process and validate a GPS position before emitting
   void _processPosition(Position position) {
     final now = DateTime.now();
     final newPosition = LatLng(position.latitude, position.longitude);
-    
+
     // Check 1: Accuracy threshold
     if (position.accuracy > _maxAccuracyMeters) {
-      debugPrint('📍 Rejected: Low accuracy (${position.accuracy.toStringAsFixed(0)}m)');
+      debugPrint(
+        '📍 Rejected: Low accuracy (${position.accuracy.toStringAsFixed(0)}m)',
+      );
       return;
     }
-    
+
     // Check 2: Teleportation detection (unrealistic speed)
     if (_lastPosition != null && _lastTimestamp != null) {
       final distance = Geolocator.distanceBetween(
@@ -185,21 +209,24 @@ class LocationService {
         newPosition.latitude,
         newPosition.longitude,
       );
-      
+
       final timeDiff = now.difference(_lastTimestamp!).inSeconds;
       if (timeDiff > 0) {
         final speed = distance / timeDiff; // meters per second
-        
+
         if (speed > _maxSpeedMps) {
-          debugPrint('📍 Rejected: Teleportation detected (${(speed * 3.6).toStringAsFixed(0)} km/h, ${distance.toStringAsFixed(0)}m jump)');
+          debugPrint(
+            '📍 Rejected: Teleportation detected (${(speed * 3.6).toStringAsFixed(0)} km/h, ${distance.toStringAsFixed(0)}m jump)',
+          );
           return;
         }
       }
     }
-    
+
     // Position passes all checks - emit it
     _lastPosition = newPosition;
     _lastTimestamp = now;
+    _lastAccuracyMeters = position.accuracy;
     _locationController.add(newPosition);
   }
 
