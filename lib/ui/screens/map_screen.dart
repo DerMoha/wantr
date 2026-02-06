@@ -355,37 +355,101 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                 child: SafeArea(child: ResourceBar()),
               ),
 
-              // Map controls (right side)
+              // Right-side controls stack (map controls + actions)
               Positioned(
                 right: 16,
-                bottom: 140,
-                child: MapControls(
-                  onCenterPressed: () {
-                    if (currentLocation != null) {
-                      // Always center on user and reset rotation
-                      _mapController.move(
-                        currentLocation,
-                        _mapController.camera.zoom,
-                      );
-                      _lastFollowedLocation = currentLocation;
-                      _mapController.rotate(0);
-                      setState(() => _isFollowingUser = true);
-                    }
-                  },
-                  onZoomIn: () {
-                    _mapController.move(
-                      _mapController.camera.center,
-                      _mapController.camera.zoom + 1,
-                    );
-                  },
-                  onZoomOut: () {
-                    _mapController.move(
-                      _mapController.camera.center,
-                      _mapController.camera.zoom - 1,
-                    );
-                  },
-                  onHelpPressed: _showHelpGuide,
-                  isFollowing: _isFollowingUser,
+                bottom: 90,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    MapControls(
+                      onCenterPressed: () {
+                        if (currentLocation != null) {
+                          // Always center on user and reset rotation
+                          _mapController.move(
+                            currentLocation,
+                            _mapController.camera.zoom,
+                          );
+                          _lastFollowedLocation = currentLocation;
+                          _mapController.rotate(0);
+                          setState(() => _isFollowingUser = true);
+                        }
+                      },
+                      onZoomIn: () {
+                        _mapController.move(
+                          _mapController.camera.center,
+                          _mapController.camera.zoom + 1,
+                        );
+                      },
+                      onZoomOut: () {
+                        _mapController.move(
+                          _mapController.camera.center,
+                          _mapController.camera.zoom - 1,
+                        );
+                      },
+                      onHelpPressed: _showHelpGuide,
+                      isFollowing: _isFollowingUser,
+                    ),
+                    const SizedBox(height: 12),
+                    if (gameProvider.anyOutpostHasResources) ...[
+                      FloatingActionButton.small(
+                        heroTag: 'collect_all',
+                        onPressed: () => _collectAllResources(),
+                        backgroundColor: WantrTheme.energy,
+                        foregroundColor: WantrTheme.background,
+                        elevation: 4,
+                        child: const Icon(Icons.download_done, size: 20),
+                      ),
+                      const SizedBox(height: 12),
+                    ],
+                    Stack(
+                      children: [
+                        FloatingActionButton(
+                          heroTag: 'build_outpost',
+                          onPressed: currentLocation != null
+                              ? () => _showBuildOutpostDialog()
+                              : null,
+                          backgroundColor: currentLocation != null
+                              ? WantrTheme.brass
+                              : WantrTheme.undiscovered,
+                          foregroundColor: WantrTheme.background,
+                          elevation: 4,
+                          child: const Icon(Icons.add_location_alt),
+                        ),
+                        // Ready count badge
+                        if (gameProvider.outpostsWithResourcesCount > 0)
+                          Positioned(
+                            right: 0,
+                            top: 0,
+                            child: Container(
+                              padding: const EdgeInsets.all(4),
+                              decoration: BoxDecoration(
+                                color: WantrTheme.energy,
+                                shape: BoxShape.circle,
+                                border: Border.all(
+                                  color: WantrTheme.background,
+                                  width: 2,
+                                ),
+                              ),
+                              constraints: const BoxConstraints(
+                                minWidth: 20,
+                                minHeight: 20,
+                              ),
+                              child: Text(
+                                '${gameProvider.outpostsWithResourcesCount}',
+                                style: GoogleFonts.jetBrainsMono(
+                                  color: WantrTheme.background,
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                                textAlign: TextAlign.center,
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ],
                 ),
               ),
 
@@ -461,73 +525,6 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                     pendingSyncCount:
                         gameProvider.cloudSyncService.pendingSyncCount,
                   ),
-                ),
-              ),
-
-              // Collect All FAB (only shows when resources ready)
-              if (gameProvider.anyOutpostHasResources)
-                Positioned(
-                  right: 16,
-                  bottom: 160,
-                  child: FloatingActionButton.small(
-                    heroTag: 'collect_all',
-                    onPressed: () => _collectAllResources(),
-                    backgroundColor: WantrTheme.energy,
-                    foregroundColor: WantrTheme.background,
-                    elevation: 4,
-                    child: const Icon(Icons.download_done, size: 20),
-                  ),
-                ),
-
-              // Build outpost FAB
-              Positioned(
-                right: 16,
-                bottom: 90,
-                child: Stack(
-                  children: [
-                    FloatingActionButton(
-                      heroTag: 'build_outpost',
-                      onPressed: currentLocation != null
-                          ? () => _showBuildOutpostDialog()
-                          : null,
-                      backgroundColor: currentLocation != null
-                          ? WantrTheme.brass
-                          : WantrTheme.undiscovered,
-                      foregroundColor: WantrTheme.background,
-                      elevation: 4,
-                      child: const Icon(Icons.add_location_alt),
-                    ),
-                    // Ready count badge
-                    if (gameProvider.outpostsWithResourcesCount > 0)
-                      Positioned(
-                        right: 0,
-                        top: 0,
-                        child: Container(
-                          padding: const EdgeInsets.all(4),
-                          decoration: BoxDecoration(
-                            color: WantrTheme.energy,
-                            shape: BoxShape.circle,
-                            border: Border.all(
-                              color: WantrTheme.background,
-                              width: 2,
-                            ),
-                          ),
-                          constraints: const BoxConstraints(
-                            minWidth: 20,
-                            minHeight: 20,
-                          ),
-                          child: Text(
-                            '${gameProvider.outpostsWithResourcesCount}',
-                            style: GoogleFonts.jetBrainsMono(
-                              color: WantrTheme.background,
-                              fontSize: 10,
-                              fontWeight: FontWeight.bold,
-                            ),
-                            textAlign: TextAlign.center,
-                          ),
-                        ),
-                      ),
-                  ],
                 ),
               ),
             ],
