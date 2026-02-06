@@ -23,7 +23,10 @@ class ResourceBar extends StatelessWidget {
             children: [
               // Main bar container
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 12,
+                ),
                 decoration: BoxDecoration(
                   gradient: LinearGradient(
                     begin: Alignment.topCenter,
@@ -114,7 +117,9 @@ class ResourceBar extends StatelessWidget {
                             value: _formatNumber(state.tradeGoods),
                             label: 'GOODS',
                             color: WantrTheme.copper,
-                            capacity: gameProvider.getResourceCapacity('tradeGoods'),
+                            capacity: gameProvider.getResourceCapacity(
+                              'tradeGoods',
+                            ),
                             currentValue: state.tradeGoods,
                           ),
                         ],
@@ -165,10 +170,7 @@ class _LevelBadge extends StatelessWidget {
   final int level;
   final double progress;
 
-  const _LevelBadge({
-    required this.level,
-    required this.progress,
-  });
+  const _LevelBadge({required this.level, required this.progress});
 
   @override
   Widget build(BuildContext context) {
@@ -178,15 +180,9 @@ class _LevelBadge extends StatelessWidget {
       decoration: BoxDecoration(
         shape: BoxShape.circle,
         gradient: RadialGradient(
-          colors: [
-            WantrTheme.surfaceElevated,
-            WantrTheme.surface,
-          ],
+          colors: [WantrTheme.surfaceElevated, WantrTheme.surface],
         ),
-        border: Border.all(
-          color: WantrTheme.brass.withOpacity(0.6),
-          width: 2,
-        ),
+        border: Border.all(color: WantrTheme.brass.withOpacity(0.6), width: 2),
         boxShadow: [
           BoxShadow(
             color: WantrTheme.brass.withOpacity(0.2),
@@ -226,10 +222,10 @@ class _LevelBadge extends StatelessWidget {
               Text(
                 'LVL',
                 style: GoogleFonts.crimsonPro(
-                  fontSize: 8,
+                  fontSize: 9,
                   fontWeight: FontWeight.w600,
                   color: WantrTheme.textMuted,
-                  letterSpacing: 1.5,
+                  letterSpacing: 1.2,
                 ),
               ),
             ],
@@ -261,7 +257,8 @@ class _ResourceItem extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     // Show capacity warning when >80% full
-    final showCapacity = capacity != null &&
+    final showCapacity =
+        capacity != null &&
         currentValue != null &&
         currentValue! > capacity! * 0.8;
 
@@ -271,11 +268,7 @@ class _ResourceItem extends StatelessWidget {
         Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(
-              icon,
-              size: 16,
-              color: color,
-            ),
+            Icon(icon, size: 16, color: color),
             const SizedBox(width: 4),
             Text(
               value,
@@ -293,20 +286,20 @@ class _ResourceItem extends StatelessWidget {
           Text(
             '/ $capacity',
             style: GoogleFonts.jetBrainsMono(
-              fontSize: 9,
+              fontSize: 10,
               fontWeight: FontWeight.w500,
               color: WantrTheme.warning,
-              letterSpacing: -0.3,
+              letterSpacing: -0.2,
             ),
           )
         else
           Text(
             label,
             style: GoogleFonts.crimsonPro(
-              fontSize: 9,
+              fontSize: 10,
               fontWeight: FontWeight.w600,
               color: WantrTheme.textMuted,
-              letterSpacing: 1.2,
+              letterSpacing: 1.0,
             ),
           ),
       ],
