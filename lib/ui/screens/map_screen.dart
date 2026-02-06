@@ -426,61 +426,24 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                     ),
                     const SizedBox(height: 12),
                     if (gameProvider.anyOutpostHasResources) ...[
-                      FloatingActionButton.small(
-                        heroTag: 'collect_all',
-                        onPressed: () => _collectAllResources(),
-                        backgroundColor: WantrTheme.energy,
-                        foregroundColor: WantrTheme.background,
-                        elevation: 4,
-                        child: const Icon(Icons.download_done, size: 20),
+                      _MapActionButton(
+                        icon: Icons.download_done_rounded,
+                        onTap: () => _collectAllResources(),
+                        accentColor: WantrTheme.energy,
+                        size: 44,
                       ),
                       const SizedBox(height: 12),
                     ],
-                    Stack(
-                      children: [
-                        FloatingActionButton(
-                          heroTag: 'build_outpost',
-                          onPressed: currentLocation != null
-                              ? () => _showBuildOutpostDialog()
-                              : null,
-                          backgroundColor: currentLocation != null
-                              ? WantrTheme.brass
-                              : WantrTheme.undiscovered,
-                          foregroundColor: WantrTheme.background,
-                          elevation: 4,
-                          child: const Icon(Icons.add_location_alt),
-                        ),
-                        // Ready count badge
-                        if (gameProvider.outpostsWithResourcesCount > 0)
-                          Positioned(
-                            right: 0,
-                            top: 0,
-                            child: Container(
-                              padding: const EdgeInsets.all(4),
-                              decoration: BoxDecoration(
-                                color: WantrTheme.energy,
-                                shape: BoxShape.circle,
-                                border: Border.all(
-                                  color: WantrTheme.background,
-                                  width: 2,
-                                ),
-                              ),
-                              constraints: const BoxConstraints(
-                                minWidth: 20,
-                                minHeight: 20,
-                              ),
-                              child: Text(
-                                '${gameProvider.outpostsWithResourcesCount}',
-                                style: GoogleFonts.jetBrainsMono(
-                                  color: WantrTheme.background,
-                                  fontSize: 10,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                                textAlign: TextAlign.center,
-                              ),
-                            ),
-                          ),
-                      ],
+                    _MapActionButton(
+                      icon: Icons.add_location_alt_rounded,
+                      onTap: currentLocation != null
+                          ? () => _showBuildOutpostDialog()
+                          : null,
+                      accentColor: WantrTheme.brass,
+                      size: 56,
+                      badgeCount: gameProvider.outpostsWithResourcesCount > 0
+                          ? gameProvider.outpostsWithResourcesCount
+                          : null,
                     ),
                   ],
                 ),
@@ -987,6 +950,105 @@ class _NavigationButton extends StatelessWidget {
           icon,
           color: isHighlighted ? WantrTheme.brass : WantrTheme.textSecondary,
           size: 24,
+        ),
+      ),
+    );
+  }
+}
+
+/// Circular map action button styled to match map controls.
+class _MapActionButton extends StatelessWidget {
+  final IconData icon;
+  final VoidCallback? onTap;
+  final Color accentColor;
+  final double size;
+  final int? badgeCount;
+
+  const _MapActionButton({
+    required this.icon,
+    required this.onTap,
+    required this.accentColor,
+    required this.size,
+    this.badgeCount,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final isEnabled = onTap != null;
+    final ringColor = isEnabled
+        ? accentColor.withOpacity(0.5)
+        : WantrTheme.textMuted.withOpacity(0.35);
+    final iconColor = isEnabled ? accentColor : WantrTheme.textMuted;
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        customBorder: const CircleBorder(),
+        child: SizedBox(
+          width: size,
+          height: size,
+          child: Stack(
+            clipBehavior: Clip.none,
+            children: [
+              Container(
+                width: size,
+                height: size,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  gradient: RadialGradient(
+                    colors: [WantrTheme.surfaceElevated, WantrTheme.surface],
+                    center: const Alignment(-0.2, -0.2),
+                  ),
+                  border: Border.all(color: ringColor, width: 1.6),
+                  boxShadow: [
+                    BoxShadow(
+                      color: WantrTheme.shadowDeep.withOpacity(0.55),
+                      blurRadius: 14,
+                      spreadRadius: 1,
+                      offset: const Offset(0, 4),
+                    ),
+                    if (isEnabled)
+                      BoxShadow(
+                        color: accentColor.withOpacity(0.18),
+                        blurRadius: 10,
+                        spreadRadius: 1,
+                      ),
+                  ],
+                ),
+                child: Icon(icon, color: iconColor, size: size * 0.46),
+              ),
+              if (badgeCount != null)
+                Positioned(
+                  right: -2,
+                  top: -2,
+                  child: Container(
+                    padding: const EdgeInsets.all(4),
+                    decoration: BoxDecoration(
+                      color: WantrTheme.energy,
+                      shape: BoxShape.circle,
+                      border: Border.all(
+                        color: WantrTheme.background,
+                        width: 2,
+                      ),
+                    ),
+                    constraints: const BoxConstraints(
+                      minWidth: 20,
+                      minHeight: 20,
+                    ),
+                    child: Text(
+                      '$badgeCount',
+                      style: GoogleFonts.jetBrainsMono(
+                        color: WantrTheme.background,
+                        fontSize: 10,
+                        fontWeight: FontWeight.bold,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
+                ),
+            ],
+          ),
         ),
       ),
     );
