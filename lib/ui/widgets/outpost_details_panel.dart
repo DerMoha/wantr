@@ -4,7 +4,6 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/models/outpost.dart';
-import '../../core/models/game_state.dart';
 import '../../core/providers/game_provider.dart';
 import '../../core/theme/app_theme.dart';
 
@@ -12,10 +11,7 @@ import '../../core/theme/app_theme.dart';
 class OutpostDetailsPanel extends StatefulWidget {
   final Outpost outpost;
 
-  const OutpostDetailsPanel({
-    super.key,
-    required this.outpost,
-  });
+  const OutpostDetailsPanel({super.key, required this.outpost});
 
   @override
   State<OutpostDetailsPanel> createState() => _OutpostDetailsPanelState();
@@ -35,9 +31,14 @@ class _OutpostDetailsPanelState extends State<OutpostDetailsPanel> {
     final canCollect = accumulated > 0;
     final isMaxLevel = outpost.level >= Outpost.maxLevel;
 
-    final upgradeGoldCost = isMaxLevel ? 0 : Outpost.getUpgradeGoldCost(outpost.type, outpost.level);
-    final upgradeTradeCost = isMaxLevel ? 0 : Outpost.getUpgradeTradeGoodsCost(outpost.level);
-    final canAffordUpgrade = !isMaxLevel &&
+    final upgradeGoldCost = isMaxLevel
+        ? 0
+        : Outpost.getUpgradeGoldCost(outpost.type, outpost.level);
+    final upgradeTradeCost = isMaxLevel
+        ? 0
+        : Outpost.getUpgradeTradeGoodsCost(outpost.level);
+    final canAffordUpgrade =
+        !isMaxLevel &&
         (gameState?.gold ?? 0) >= upgradeGoldCost &&
         (gameState?.tradeGoods ?? 0) >= upgradeTradeCost;
 
@@ -45,10 +46,7 @@ class _OutpostDetailsPanelState extends State<OutpostDetailsPanel> {
       decoration: BoxDecoration(
         color: WantrTheme.surface,
         borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-        border: Border.all(
-          color: WantrTheme.brass.withOpacity(0.3),
-          width: 1,
-        ),
+        border: Border.all(color: WantrTheme.brass.withOpacity(0.3), width: 1),
         boxShadow: [
           BoxShadow(
             color: WantrTheme.shadowDeep.withOpacity(0.5),
@@ -93,10 +91,7 @@ class _OutpostDetailsPanelState extends State<OutpostDetailsPanel> {
                           ],
                         ),
                         borderRadius: BorderRadius.circular(12),
-                        border: Border.all(
-                          color: WantrTheme.brass,
-                          width: 2,
-                        ),
+                        border: Border.all(color: WantrTheme.brass, width: 2),
                         boxShadow: [
                           BoxShadow(
                             color: WantrTheme.brass.withOpacity(0.3),
@@ -188,11 +183,7 @@ class _OutpostDetailsPanelState extends State<OutpostDetailsPanel> {
                   ),
                   child: Row(
                     children: [
-                      Icon(
-                        Icons.schedule,
-                        color: WantrTheme.brass,
-                        size: 20,
-                      ),
+                      Icon(Icons.schedule, color: WantrTheme.brass, size: 20),
                       const SizedBox(width: 10),
                       Text(
                         'Production: ',
@@ -282,11 +273,15 @@ class _OutpostDetailsPanelState extends State<OutpostDetailsPanel> {
                           SizedBox(
                             width: double.infinity,
                             child: ElevatedButton(
-                              onPressed: _isCollecting ? null : _collectResources,
+                              onPressed: _isCollecting
+                                  ? null
+                                  : _collectResources,
                               style: ElevatedButton.styleFrom(
                                 backgroundColor: WantrTheme.brass,
                                 foregroundColor: WantrTheme.background,
-                                padding: const EdgeInsets.symmetric(vertical: 12),
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 12,
+                                ),
                               ),
                               child: _isCollecting
                                   ? const SizedBox(
@@ -368,7 +363,9 @@ class _OutpostDetailsPanelState extends State<OutpostDetailsPanel> {
                             _CostChip(
                               icon: Icons.inventory_2,
                               value: upgradeTradeCost,
-                              color: (gameState?.tradeGoods ?? 0) >= upgradeTradeCost
+                              color:
+                                  (gameState?.tradeGoods ?? 0) >=
+                                      upgradeTradeCost
                                   ? WantrTheme.copper
                                   : WantrTheme.error,
                             ),
@@ -560,9 +557,7 @@ class _CostChip extends StatelessWidget {
       decoration: BoxDecoration(
         color: color.withOpacity(0.1),
         borderRadius: BorderRadius.circular(6),
-        border: Border.all(
-          color: color.withOpacity(0.3),
-        ),
+        border: Border.all(color: color.withOpacity(0.3)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,

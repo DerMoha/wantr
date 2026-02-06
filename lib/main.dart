@@ -12,7 +12,7 @@ String? _initError;
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  
+
   // Initialize Firebase with error handling
   try {
     await Firebase.initializeApp();
@@ -21,36 +21,38 @@ void main() async {
     debugPrint('❌ Firebase init error: $e');
     _initError = e.toString();
   }
-  
+
   // Set preferred orientations
   await SystemChrome.setPreferredOrientations([
     DeviceOrientation.portraitUp,
     DeviceOrientation.portraitDown,
   ]);
-  
+
   // Set system UI overlay style for dark theme
-  SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
-    statusBarColor: Colors.transparent,
-    statusBarIconBrightness: Brightness.light,
-    systemNavigationBarColor: WantrTheme.background,
-    systemNavigationBarIconBrightness: Brightness.light,
-  ));
-  
+  SystemChrome.setSystemUIOverlayStyle(
+    const SystemUiOverlayStyle(
+      statusBarColor: Colors.transparent,
+      statusBarIconBrightness: Brightness.light,
+      systemNavigationBarColor: WantrTheme.background,
+      systemNavigationBarIconBrightness: Brightness.light,
+    ),
+  );
+
   // Initialize Hive
   try {
     await Hive.initFlutter();
     debugPrint('✅ Hive initialized');
   } catch (e) {
     debugPrint('❌ Hive init error: $e');
-    _initError = (_initError ?? '') + '\nHive: $e';
+    _initError = '${_initError ?? ''}\nHive: $e';
   }
-  
+
   runApp(WantrApp(initError: _initError));
 }
 
 class WantrApp extends StatelessWidget {
   final String? initError;
-  
+
   const WantrApp({super.key, this.initError});
 
   @override
@@ -66,7 +68,11 @@ class WantrApp extends StatelessWidget {
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  const Icon(Icons.error_outline, color: Colors.redAccent, size: 48),
+                  const Icon(
+                    Icons.error_outline,
+                    color: Colors.redAccent,
+                    size: 48,
+                  ),
                   const SizedBox(height: 16),
                   const Text(
                     'Initialization Error',
@@ -85,7 +91,7 @@ class WantrApp extends StatelessWidget {
         ),
       );
     }
-    
+
     return ChangeNotifierProvider(
       create: (_) => GameProvider()..initialize(),
       child: MaterialApp(
@@ -117,7 +123,7 @@ class _WantrHomeState extends State<WantrHome> {
 
   Future<void> _initializeGame() async {
     final gameProvider = context.read<GameProvider>();
-    
+
     // Check if already initialized
     if (gameProvider.isInitialized) {
       if (mounted) setState(() => _isLoading = false);
@@ -130,7 +136,7 @@ class _WantrHomeState extends State<WantrHome> {
       gameProvider.initialize(),
       Future.delayed(const Duration(milliseconds: 800)),
     ]);
-    
+
     if (mounted) {
       setState(() => _isLoading = false);
     }

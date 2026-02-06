@@ -46,6 +46,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   late Animation<double> _glowAnimation;
 
   bool _isFollowingUser = true;
+  LatLng? _lastFollowedLocation;
   bool _showStats = false;
   bool _isOnline = true;
 
@@ -99,12 +100,13 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (context) => WelcomeDialog(
+      builder: (dialogContext) => WelcomeDialog(
         onComplete: () async {
+          final navigator = Navigator.of(dialogContext);
           settings.hasSeenOnboarding = true;
           await settings.save();
-          if (mounted) {
-            Navigator.pop(context);
+          if (mounted && navigator.mounted) {
+            navigator.pop();
           }
         },
       ),
@@ -132,8 +134,9 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     await _connectivityService.initialize();
     _isOnline = _connectivityService.isOnline;
 
-    _connectivitySubscription =
-        _connectivityService.statusStream.listen((isOnline) {
+    _connectivitySubscription = _connectivityService.statusStream.listen((
+      isOnline,
+    ) {
       if (mounted) {
         setState(() => _isOnline = isOnline);
       }
@@ -144,9 +147,45 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     final gameProvider = context.read<GameProvider>();
     await gameProvider.startTracking();
 
-    if (gameProvider.currentLocation != null) {
-      _mapController.move(gameProvider.currentLocation!, 16.0);
+    if (!mounted) return;
+
+    final location = gameProvider.currentLocation;
+    if (location != null) {
+      _mapController.move(location, 16.0);
+      _lastFollowedLocation = location;
     }
+  }
+
+  /// Keep map centered on the user while follow-mode is enabled.
+  void _followUserIfNeeded(LatLng currentLocation) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_isFollowingUser) return;
+
+      final previousFollowedLocation = _lastFollowedLocation;
+      if (previousFollowedLocation != null) {
+        final movedMeters = _calculateDistance(
+          previousFollowedLocation,
+          currentLocation,
+        );
+        if (movedMeters < 5) {
+          return; // Avoid jittery recentering for tiny GPS movement.
+        }
+      }
+
+      try {
+        _mapController.move(currentLocation, _mapController.camera.zoom);
+        _lastFollowedLocation = currentLocation;
+      } catch (_) {
+        // Map camera may not be ready on first frame.
+      }
+    });
+  }
+
+  int _countDiscoveredStreets(GameProvider gameProvider) {
+    return gameProvider.revealedSegments
+        .map((segment) => segment.streetId)
+        .toSet()
+        .length;
   }
 
   void _showBuildOutpostDialog() {
@@ -174,8 +213,12 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     // Build summary message
     final collected = <String>[];
     if (totals['gold']! > 0) collected.add('+${totals['gold']} gold');
-    if (totals['tradeGoods']! > 0) collected.add('+${totals['tradeGoods']} goods');
-    if (totals['materials']! > 0) collected.add('+${totals['materials']} materials');
+    if (totals['tradeGoods']! > 0) {
+      collected.add('+${totals['tradeGoods']} goods');
+    }
+    if (totals['materials']! > 0) {
+      collected.add('+${totals['materials']} materials');
+    }
     if (totals['energy']! > 0) collected.add('+${totals['energy']} energy');
 
     if (collected.isEmpty) return;
@@ -200,8 +243,14 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
         builder: (context, gameProvider, child) {
           final currentLocation = gameProvider.currentLocation;
           final osmStreets = gameProvider.osmService.cachedStreets;
-          final revealedSegmentIds =
-              gameProvider.revealedSegments.map((s) => s.id).toSet();
+          final revealedSegmentIds = gameProvider.revealedSegments
+              .map((s) => s.id)
+              .toSet();
+          final discoveredStreetCount = _countDiscoveredStreets(gameProvider);
+
+          if (_isFollowingUser && currentLocation != null) {
+            _followUserIfNeeded(currentLocation);
+          }
 
           return Stack(
             children: [
@@ -209,8 +258,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
               FlutterMap(
                 mapController: _mapController,
                 options: MapOptions(
-                  initialCenter:
-                      currentLocation ?? const LatLng(52.52, 13.405),
+                  initialCenter: currentLocation ?? const LatLng(52.52, 13.405),
                   initialZoom: 16.0,
                   minZoom: 10.0,
                   maxZoom: 19.0,
@@ -234,24 +282,29 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                   // OSM Streets - Undiscovered segments (fog)
                   PolylineLayer(
                     polylines: _buildUndiscoveredPolylines(
-                        osmStreets, revealedSegmentIds),
+                      osmStreets,
+                      revealedSegmentIds,
+                    ),
                   ),
 
                   // Revealed segments layer (gold progression)
                   PolylineLayer(
                     polylines: _buildRevealedSegmentPolylines(
-                        gameProvider.revealedSegments),
+                      gameProvider.revealedSegments,
+                    ),
                   ),
 
                   // Current walk path (ink trail effect)
                   if (gameProvider.currentWalkPath.isNotEmpty)
-                    ..._buildWalkTrail(gameProvider)
-                        .map((w) => RepaintBoundary(child: w)),
+                    ..._buildWalkTrail(
+                      gameProvider,
+                    ).map((w) => RepaintBoundary(child: w)),
 
                   // Trail breadcrumbs
                   if (gameProvider.currentWalkPath.isNotEmpty)
-                    ..._buildBreadcrumbs(gameProvider)
-                        .map((w) => RepaintBoundary(child: w)),
+                    ..._buildBreadcrumbs(
+                      gameProvider,
+                    ).map((w) => RepaintBoundary(child: w)),
 
                   // Outpost markers (tappable)
                   MarkerLayer(
@@ -299,9 +352,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                 top: 0,
                 left: 0,
                 right: 0,
-                child: SafeArea(
-                  child: ResourceBar(),
-                ),
+                child: SafeArea(child: ResourceBar()),
               ),
 
               // Map controls (right side)
@@ -312,7 +363,11 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                   onCenterPressed: () {
                     if (currentLocation != null) {
                       // Always center on user and reset rotation
-                      _mapController.move(currentLocation, _mapController.camera.zoom);
+                      _mapController.move(
+                        currentLocation,
+                        _mapController.camera.zoom,
+                      );
+                      _lastFollowedLocation = currentLocation;
                       _mapController.rotate(0);
                       setState(() => _isFollowingUser = true);
                     }
@@ -344,7 +399,9 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                       icon: Icons.person_outline,
                       onTap: () => Navigator.push(
                         context,
-                        MaterialPageRoute(builder: (_) => const AccountScreen()),
+                        MaterialPageRoute(
+                          builder: (_) => const AccountScreen(),
+                        ),
                       ),
                     ),
                     const SizedBox(height: 10),
@@ -385,7 +442,8 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                   duration: const Duration(milliseconds: 200),
                   opacity: _isOnline ? 0.0 : 1.0,
                   child: _OfflineBanner(
-                    pendingSyncCount: gameProvider.cloudSyncService.pendingSyncCount,
+                    pendingSyncCount:
+                        gameProvider.cloudSyncService.pendingSyncCount,
                   ),
                 ),
               ),
@@ -398,9 +456,10 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                 child: Center(
                   child: _TrackingIndicator(
                     isTracking: gameProvider.isTracking,
-                    streetCount: gameProvider.discoveredStreets.length,
+                    streetCount: discoveredStreetCount,
                     pulseAnimation: _pulseAnimation,
-                    pendingSyncCount: gameProvider.cloudSyncService.pendingSyncCount,
+                    pendingSyncCount:
+                        gameProvider.cloudSyncService.pendingSyncCount,
                   ),
                 ),
               ),
@@ -497,11 +556,13 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
         final segmentId = '${street.id}_$i';
 
         if (!revealedSegmentIds.contains(segmentId)) {
-          polylines.add(Polyline(
-            points: [street.points[i], street.points[i + 1]],
-            color: WantrTheme.fogPurple.withAlpha(60),
-            strokeWidth: 3.0,
-          ));
+          polylines.add(
+            Polyline(
+              points: [street.points[i], street.points[i + 1]],
+              color: WantrTheme.fogPurple.withAlpha(60),
+              strokeWidth: 3.0,
+            ),
+          );
         }
       }
     }
@@ -510,7 +571,9 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   }
 
   /// Build polylines for revealed segments with cartographic styling
-  List<Polyline> _buildRevealedSegmentPolylines(List<RevealedSegment> segments) {
+  List<Polyline> _buildRevealedSegmentPolylines(
+    List<RevealedSegment> segments,
+  ) {
     return segments.map((segment) {
       Color color;
       double strokeWidth;
@@ -556,56 +619,66 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     final List<LatLng> fadingPath = [];
     double accumulatedDistance = 0;
     const maxDistance = 20.0; // meters
-    
+
     fadingPath.add(path.last);
-    
-    for (int i = path.length - 2; i >= 0 && accumulatedDistance < maxDistance; i--) {
+
+    for (
+      int i = path.length - 2;
+      i >= 0 && accumulatedDistance < maxDistance;
+      i--
+    ) {
       final dist = _calculateDistance(path[i], path[i + 1]);
       accumulatedDistance += dist;
       fadingPath.insert(0, path[i]);
     }
-    
+
     if (fadingPath.length < 2) return [];
-    
+
     // Create gradient polylines with fading opacity
     final List<Polyline> outerGlowLines = [];
     final List<Polyline> middleGlowLines = [];
     final List<Polyline> innerCoreLines = [];
-    
+
     double runningDistance = 0;
-    
+
     for (int i = 0; i < fadingPath.length - 1; i++) {
       final segmentDist = _calculateDistance(fadingPath[i], fadingPath[i + 1]);
-      
+
       // Calculate opacity based on distance from end (player position)
       // Distance from end = total accumulated distance - running distance
       final distanceFromEnd = accumulatedDistance - runningDistance;
       final fadeRatio = (distanceFromEnd / maxDistance).clamp(0.0, 1.0);
       final opacity = 1.0 - fadeRatio; // 1.0 at player, 0.0 at 20m back
-      
+
       final segmentPoints = [fadingPath[i], fadingPath[i + 1]];
-      
+
       // Outer glow
-      outerGlowLines.add(Polyline(
-        points: segmentPoints,
-        color: WantrTheme.brass.withOpacity(0.25 * opacity),
-        strokeWidth: 12.0,
-      ));
-      
+      outerGlowLines.add(
+        Polyline(
+          points: segmentPoints,
+          color: WantrTheme.brass.withOpacity(0.25 * opacity),
+          strokeWidth: 12.0,
+        ),
+      );
+
       // Middle glow
-      middleGlowLines.add(Polyline(
-        points: segmentPoints,
-        color: WantrTheme.brass.withOpacity(0.5 * opacity),
-        strokeWidth: 6.0,
-      ));
-      
+      middleGlowLines.add(
+        Polyline(
+          points: segmentPoints,
+          color: WantrTheme.brass.withOpacity(0.5 * opacity),
+          strokeWidth: 6.0,
+        ),
+      );
+
       // Inner core
-      innerCoreLines.add(Polyline(
-        points: segmentPoints,
-        color: WantrTheme.brassLight.withOpacity(opacity),
-        strokeWidth: 2.5,
-      ));
-      
+      innerCoreLines.add(
+        Polyline(
+          points: segmentPoints,
+          color: WantrTheme.brassLight.withOpacity(opacity),
+          strokeWidth: 2.5,
+        ),
+      );
+
       runningDistance += segmentDist;
     }
 
@@ -615,7 +688,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
       PolylineLayer(polylines: innerCoreLines),
     ];
   }
-  
+
   /// Calculate distance between two points in meters
   double _calculateDistance(LatLng a, LatLng b) {
     const distance = Distance();
@@ -632,11 +705,15 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     final List<double> distances = []; // Distance from end for each point
     double accumulatedDistance = 0;
     const maxDistance = 20.0;
-    
+
     fadingPath.add(path.last);
     distances.add(0);
-    
-    for (int i = path.length - 2; i >= 0 && accumulatedDistance < maxDistance; i--) {
+
+    for (
+      int i = path.length - 2;
+      i >= 0 && accumulatedDistance < maxDistance;
+      i--
+    ) {
       final dist = _calculateDistance(path[i], path[i + 1]);
       accumulatedDistance += dist;
       fadingPath.insert(0, path[i]);
@@ -647,18 +724,19 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     // Place breadcrumbs every ~5 meters
     double lastBreadcrumbDist = 0;
     const breadcrumbSpacing = 5.0;
-    
+
     for (int i = 0; i < fadingPath.length; i++) {
       final distFromEnd = i < distances.length ? distances[i] : 0.0;
-      
+
       // Only place breadcrumb if we've moved enough since last one
-      if (i == 0 || (distFromEnd - lastBreadcrumbDist).abs() >= breadcrumbSpacing) {
+      if (i == 0 ||
+          (distFromEnd - lastBreadcrumbDist).abs() >= breadcrumbSpacing) {
         lastBreadcrumbDist = distFromEnd;
-        
+
         // Calculate opacity based on distance from player
         final fadeRatio = (distFromEnd / maxDistance).clamp(0.0, 1.0);
         final opacity = 1.0 - fadeRatio;
-        
+
         markers.add(
           Marker(
             point: fadingPath[i],
@@ -669,11 +747,15 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
               builder: (context, child) {
                 return Container(
                   decoration: BoxDecoration(
-                    color: WantrTheme.brass.withOpacity(0.4 * _pulseAnimation.value * opacity),
+                    color: WantrTheme.brass.withOpacity(
+                      0.4 * _pulseAnimation.value * opacity,
+                    ),
                     shape: BoxShape.circle,
                     boxShadow: [
                       BoxShadow(
-                        color: WantrTheme.brass.withOpacity(0.2 * _pulseAnimation.value * opacity),
+                        color: WantrTheme.brass.withOpacity(
+                          0.2 * _pulseAnimation.value * opacity,
+                        ),
                         blurRadius: 4,
                         spreadRadius: 1,
                       ),
@@ -705,15 +787,9 @@ class _PlayerMarker extends StatelessWidget {
       decoration: BoxDecoration(
         shape: BoxShape.circle,
         gradient: RadialGradient(
-          colors: [
-            WantrTheme.brass,
-            WantrTheme.brassDark,
-          ],
+          colors: [WantrTheme.brass, WantrTheme.brassDark],
         ),
-        border: Border.all(
-          color: WantrTheme.parchment,
-          width: 3,
-        ),
+        border: Border.all(color: WantrTheme.parchment, width: 3),
         boxShadow: [
           BoxShadow(
             color: WantrTheme.brass.withOpacity(glowOpacity),
@@ -770,10 +846,7 @@ class _OutpostMarker extends StatelessWidget {
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [
-            WantrTheme.parchment,
-            WantrTheme.parchmentDark,
-          ],
+          colors: [WantrTheme.parchment, WantrTheme.parchmentDark],
         ),
         border: Border.all(
           color: hasResources ? WantrTheme.energy : WantrTheme.brass,
@@ -792,12 +865,7 @@ class _OutpostMarker extends StatelessWidget {
           ),
         ],
       ),
-      child: Center(
-        child: Text(
-          icon,
-          style: const TextStyle(fontSize: 22),
-        ),
-      ),
+      child: Center(child: Text(icon, style: const TextStyle(fontSize: 22))),
     );
 
     // Add glow effect when resources are ready
@@ -812,7 +880,9 @@ class _OutpostMarker extends StatelessWidget {
               shape: BoxShape.circle,
               boxShadow: [
                 BoxShadow(
-                  color: WantrTheme.energy.withOpacity(0.4 * pulseAnimation!.value),
+                  color: WantrTheme.energy.withOpacity(
+                    0.4 * pulseAnimation!.value,
+                  ),
                   blurRadius: 12,
                   spreadRadius: 4,
                 ),
@@ -942,15 +1012,16 @@ class _TrackingIndicator extends StatelessWidget {
                 width: 10,
                 height: 10,
                 decoration: BoxDecoration(
-                  color: (isTracking
-                          ? WantrTheme.tracking
-                          : WantrTheme.textMuted)
-                      .withOpacity(pulseAnimation.value),
+                  color:
+                      (isTracking ? WantrTheme.tracking : WantrTheme.textMuted)
+                          .withOpacity(pulseAnimation.value),
                   shape: BoxShape.circle,
                   boxShadow: [
                     if (isTracking)
                       BoxShadow(
-                        color: WantrTheme.tracking.withOpacity(0.4 * pulseAnimation.value),
+                        color: WantrTheme.tracking.withOpacity(
+                          0.4 * pulseAnimation.value,
+                        ),
                         blurRadius: 8,
                         spreadRadius: 2,
                       ),
@@ -1096,11 +1167,7 @@ class _OfflineBanner extends StatelessWidget {
       ),
       child: Row(
         children: [
-          Icon(
-            Icons.cloud_off_outlined,
-            color: WantrTheme.parchment,
-            size: 20,
-          ),
+          Icon(Icons.cloud_off_outlined, color: WantrTheme.parchment, size: 20),
           const SizedBox(width: 12),
           Expanded(
             child: Text(

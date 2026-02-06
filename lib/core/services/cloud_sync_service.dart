@@ -62,7 +62,9 @@ class CloudSyncService {
       }
 
       _isInitialized = true;
-      debugPrint('☁️ Loaded ${_pendingSyncQueue.length} pending syncs from storage');
+      debugPrint(
+        '☁️ Loaded ${_pendingSyncQueue.length} pending syncs from storage',
+      );
     } catch (e) {
       debugPrint('⚠️ Error initializing pending queue: $e');
       _isInitialized = true; // Continue without persisted data
@@ -97,42 +99,46 @@ class CloudSyncService {
       debugPrint('⚠️ Error removing from persisted queue: $e');
     }
   }
-  
+
   /// Check if sync should proceed based on WiFi setting
   Future<bool> _shouldSync() async {
     try {
       final settingsBox = await Hive.openBox<dynamic>('app_settings');
       final settings = settingsBox.get('settings');
-      
+
       // If WiFi-only sync is disabled, always sync
-      if (settings == null || !(settings is AppSettings) || !settings.wifiOnlySync) {
+      if (settings == null ||
+          settings is! AppSettings ||
+          !settings.wifiOnlySync) {
         return true;
       }
-      
+
       // Check if we're on WiFi
       final connectivity = await Connectivity().checkConnectivity();
       final isOnWifi = connectivity.contains(ConnectivityResult.wifi);
-      
+
       if (!isOnWifi) {
         debugPrint('☁️ WiFi-only sync enabled, skipping (on mobile data)');
       }
-      
+
       return isOnWifi;
     } catch (e) {
       debugPrint('☁️ Error checking connectivity: $e');
       return true; // Default to syncing on error
     }
   }
-  
+
   /// Add segment to pending queue (for retry later)
   Future<void> _addToPendingQueue(RevealedSegment segment) async {
     if (!_pendingSyncQueue.any((s) => s.id == segment.id)) {
       _pendingSyncQueue.add(segment);
       await _persistToPendingQueue(segment);
-      debugPrint('☁️ Added segment to pending queue (${_pendingSyncQueue.length} pending)');
+      debugPrint(
+        '☁️ Added segment to pending queue (${_pendingSyncQueue.length} pending)',
+      );
     }
   }
-  
+
   /// Process pending sync queue
   Future<void> processPendingQueue() async {
     if (_isProcessingQueue || _pendingSyncQueue.isEmpty) return;
@@ -158,7 +164,7 @@ class CloudSyncService {
 
     _isProcessingQueue = false;
   }
-  
+
   /// Get pending sync count
   int get pendingSyncCount => _pendingSyncQueue.length;
 
@@ -180,7 +186,7 @@ class CloudSyncService {
       await _addToPendingQueue(segment);
     }
   }
-  
+
   /// Actually sync segment (internal)
   Future<void> _syncSegmentNow(RevealedSegment segment) async {
     final teamId = await _authService.getUserTeamId();
@@ -221,7 +227,9 @@ class CloudSyncService {
         'stats.memberSegments.$userId': FieldValue.increment(1),
       });
 
-      debugPrint('☁️ Synced NEW segment ${segment.streetName ?? segment.id} to team');
+      debugPrint(
+        '☁️ Synced NEW segment ${segment.streetName ?? segment.id} to team',
+      );
     } else {
       // Existing segment - only update walk info, preserve firstDiscoveredAt and discoveredBy
       await segmentRef.update({
@@ -230,20 +238,22 @@ class CloudSyncService {
         'lastWalkedBy': userId,
       });
 
-      debugPrint('☁️ Updated existing segment ${segment.streetName ?? segment.id}');
+      debugPrint(
+        '☁️ Updated existing segment ${segment.streetName ?? segment.id}',
+      );
     }
   }
 
   /// Sync distance walked to team stats (with buffering)
   Future<void> syncDistanceWalked(double distanceMeters) async {
     _distanceBuffer += distanceMeters;
-    
+
     // If we've walked enough, sync immediately
     if (_distanceBuffer >= _distanceBufferThresholdMeters) {
       await flushDistanceBuffer();
       return;
     }
-    
+
     // Otherwise, start/reset timer for periodic sync
     _distanceTimer?.cancel();
     _distanceTimer = Timer(_distanceBufferDuration, () {
@@ -254,7 +264,7 @@ class CloudSyncService {
   /// Push buffered distance to Firestore
   Future<void> flushDistanceBuffer() async {
     if (_distanceBuffer <= 0) return;
-    
+
     final teamId = await _authService.getUserTeamId();
     if (teamId == null) return;
 
@@ -280,62 +290,35 @@ class CloudSyncService {
   }
 
   /// Get team's revealed segments (optionally after a certain date for incremental sync)
-  Future<List<RevealedSegment>> getTeamRevealedSegments({DateTime? lastSyncAt}) async {
+  Future<List<RevealedSegment>> getTeamRevealedSegments({
+    DateTime? lastSyncAt,
+  }) async {
     final teamId = await _authService.getUserTeamId();
     if (teamId == null) return [];
 
     final userId = _authService.userId;
-    
+
     Query query = _firestore
         .collection('teams')
         .doc(teamId)
         .collection('revealedSegments');
 
     if (lastSyncAt != null) {
-      query = query.where('lastWalkedAt', isGreaterThan: Timestamp.fromDate(lastSyncAt));
+      query = query.where(
+        'lastWalkedAt',
+        isGreaterThan: Timestamp.fromDate(lastSyncAt),
+      );
     }
 
     final snapshot = await query.get();
 
-    return snapshot.docs.map((doc) {
-      final data = doc.data() as Map<String, dynamic>?;
-      if (data == null) return null;
-      
-      final discoveredBy = data['discoveredBy'] as String?;
-      
-      return RevealedSegment(
-        id: doc.id,
-        streetId: data['streetId'] as String,
-        streetName: data['streetName'] as String?,
-        startLat: data['startLat'] as double,
-        startLng: data['startLng'] as double,
-        endLat: data['endLat'] as double? ?? 0.0,
-        endLng: data['endLng'] as double? ?? 0.0,
-        timesWalked: data['timesWalked'] as int? ?? 1,
-        discoveredByMe: discoveredBy == userId,
-      );
-    }).whereType<RevealedSegment>().toList();
-  }
-
-  /// Stream team's revealed segments for real-time updates (can be filtered for incremental sync)
-  Stream<List<RevealedSegment>> teamSegmentsStream(String teamId, {DateTime? lastSyncAt}) {
-    final userId = _authService.userId;
-    
-    Query query = _firestore
-        .collection('teams')
-        .doc(teamId)
-        .collection('revealedSegments');
-
-    if (lastSyncAt != null) {
-      query = query.where('lastWalkedAt', isGreaterThan: Timestamp.fromDate(lastSyncAt));
-    }
-
-    return query.snapshots().map((snapshot) => snapshot.docs.map((doc) {
+    return snapshot.docs
+        .map((doc) {
           final data = doc.data() as Map<String, dynamic>?;
           if (data == null) return null;
 
           final discoveredBy = data['discoveredBy'] as String?;
-          
+
           return RevealedSegment(
             id: doc.id,
             streetId: data['streetId'] as String,
@@ -347,7 +330,53 @@ class CloudSyncService {
             timesWalked: data['timesWalked'] as int? ?? 1,
             discoveredByMe: discoveredBy == userId,
           );
-        }).whereType<RevealedSegment>().toList());
+        })
+        .whereType<RevealedSegment>()
+        .toList();
+  }
+
+  /// Stream team's revealed segments for real-time updates (can be filtered for incremental sync)
+  Stream<List<RevealedSegment>> teamSegmentsStream(
+    String teamId, {
+    DateTime? lastSyncAt,
+  }) {
+    final userId = _authService.userId;
+
+    Query query = _firestore
+        .collection('teams')
+        .doc(teamId)
+        .collection('revealedSegments');
+
+    if (lastSyncAt != null) {
+      query = query.where(
+        'lastWalkedAt',
+        isGreaterThan: Timestamp.fromDate(lastSyncAt),
+      );
+    }
+
+    return query.snapshots().map(
+      (snapshot) => snapshot.docs
+          .map((doc) {
+            final data = doc.data() as Map<String, dynamic>?;
+            if (data == null) return null;
+
+            final discoveredBy = data['discoveredBy'] as String?;
+
+            return RevealedSegment(
+              id: doc.id,
+              streetId: data['streetId'] as String,
+              streetName: data['streetName'] as String?,
+              startLat: data['startLat'] as double,
+              startLng: data['startLng'] as double,
+              endLat: data['endLat'] as double? ?? 0.0,
+              endLng: data['endLng'] as double? ?? 0.0,
+              timesWalked: data['timesWalked'] as int? ?? 1,
+              discoveredByMe: discoveredBy == userId,
+            );
+          })
+          .whereType<RevealedSegment>()
+          .toList(),
+    );
   }
 
   /// Upload local segments to team that don't already exist in the cloud
@@ -360,37 +389,41 @@ class CloudSyncService {
     final userId = _authService.userId!;
     final teamRef = _firestore.collection('teams').doc(teamId);
     final segmentsRef = teamRef.collection('revealedSegments');
-    
+
     // First, get all existing segment IDs from the cloud (just IDs, minimal reads)
     debugPrint('☁️ Checking for existing segments in cloud...');
     final existingSnapshot = await segmentsRef.get();
     final existingIds = existingSnapshot.docs.map((doc) => doc.id).toSet();
     debugPrint('☁️ Found ${existingIds.length} existing segments in cloud');
-    
+
     // Filter to only new segments
-    final newSegments = localSegments.where((s) => !existingIds.contains(s.id)).toList();
-    
+    final newSegments = localSegments
+        .where((s) => !existingIds.contains(s.id))
+        .toList();
+
     if (newSegments.isEmpty) {
       debugPrint('☁️ All segments already synced, nothing to upload');
       return 0;
     }
-    
-    debugPrint('☁️ Uploading ${newSegments.length} new segments (skipping ${localSegments.length - newSegments.length} existing)');
-    
+
+    debugPrint(
+      '☁️ Uploading ${newSegments.length} new segments (skipping ${localSegments.length - newSegments.length} existing)',
+    );
+
     int uploadedCount = 0;
-    
+
     // Process in batches of 500 (Firestore limit)
     const batchSize = 500;
     for (int i = 0; i < newSegments.length; i += batchSize) {
       final batch = _firestore.batch();
-      final end = (i + batchSize > newSegments.length) 
-          ? newSegments.length 
+      final end = (i + batchSize > newSegments.length)
+          ? newSegments.length
           : i + batchSize;
-      
+
       for (int j = i; j < end; j++) {
         final segment = newSegments[j];
         final segmentRef = segmentsRef.doc(segment.id);
-        
+
         batch.set(segmentRef, {
           'streetId': segment.streetId,
           'streetName': segment.streetName,
@@ -404,14 +437,14 @@ class CloudSyncService {
           'lastWalkedAt': FieldValue.serverTimestamp(),
           'lastWalkedBy': userId,
         });
-        
+
         uploadedCount++;
       }
-      
+
       await batch.commit();
       debugPrint('☁️ Committed batch ${(i ~/ batchSize) + 1}');
     }
-    
+
     // Update team stats with new total and per-user count
     final newTotal = existingIds.length + uploadedCount;
     await teamRef.update({
@@ -419,9 +452,9 @@ class CloudSyncService {
       'stats.memberSegments.$userId': FieldValue.increment(uploadedCount),
     });
 
-    debugPrint('☁️ Uploaded $uploadedCount new segments to team (total: $newTotal)');
+    debugPrint(
+      '☁️ Uploaded $uploadedCount new segments to team (total: $newTotal)',
+    );
     return uploadedCount;
   }
 }
-
-

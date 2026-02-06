@@ -46,11 +46,9 @@ class _AccountScreenState extends State<AccountScreen> {
 
     final userId = _authService.userId;
     if (userId != null) {
-      FirebaseFirestore.instance
-          .collection('users')
-          .doc(userId)
-          .get()
-          .then((userDoc) {
+      FirebaseFirestore.instance.collection('users').doc(userId).get().then((
+        userDoc,
+      ) {
         if (userDoc.exists && mounted) {
           setState(() {
             _customDisplayName = userDoc.data()?['displayName'];
@@ -149,7 +147,9 @@ class _AccountScreenState extends State<AccountScreen> {
                     onJoinTeam: _showJoinTeamDialog,
                     onRegenerateCode: _isLeader ? _regenerateInviteCode : null,
                     onKickMember: _isLeader ? _kickMember : null,
-                    onTransferLeadership: _isLeader ? _transferLeadership : null,
+                    onTransferLeadership: _isLeader
+                        ? _transferLeadership
+                        : null,
                   ),
                   const SizedBox(height: 20),
                 ],
@@ -285,9 +285,7 @@ class _AccountScreenState extends State<AccountScreen> {
           ),
           ElevatedButton(
             onPressed: () => Navigator.pop(context, controller.text.trim()),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: WantrTheme.brass,
-            ),
+            style: ElevatedButton.styleFrom(backgroundColor: WantrTheme.brass),
             child: Text(
               'Save',
               style: GoogleFonts.crimsonPro(color: WantrTheme.background),
@@ -297,13 +295,14 @@ class _AccountScreenState extends State<AccountScreen> {
       ),
     );
 
-    if (newName != null && newName.isNotEmpty && newName != _customDisplayName) {
+    if (newName != null &&
+        newName.isNotEmpty &&
+        newName != _customDisplayName) {
       final userId = _authService.userId;
       if (userId != null) {
-        await FirebaseFirestore.instance
-            .collection('users')
-            .doc(userId)
-            .update({'displayName': newName});
+        await FirebaseFirestore.instance.collection('users').doc(userId).update(
+          {'displayName': newName},
+        );
 
         setState(() => _customDisplayName = newName);
 
@@ -585,7 +584,9 @@ class _AccountScreenState extends State<AccountScreen> {
       final gameProvider = context.read<GameProvider>();
       final localSegments = gameProvider.revealedSegments;
       // Use the shared CloudSyncService instance from GameProvider
-      final count = await gameProvider.cloudSyncService.uploadLocalSegments(localSegments);
+      final count = await gameProvider.cloudSyncService.uploadLocalSegments(
+        localSegments,
+      );
 
       // Also pull any team discoveries we might be missing
       await gameProvider.refreshTeamSync();
@@ -605,10 +606,7 @@ class _AccountScreenState extends State<AccountScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(
-              'Sync failed: $e',
-              style: GoogleFonts.crimsonPro(),
-            ),
+            content: Text('Sync failed: $e', style: GoogleFonts.crimsonPro()),
             backgroundColor: WantrTheme.error,
           ),
         );
@@ -670,14 +668,18 @@ class _AccountScreenState extends State<AccountScreen> {
             ),
             ElevatedButton(
               onPressed: () {
-                final error = _teamService.validateTeamName(nameController.text);
+                final error = _teamService.validateTeamName(
+                  nameController.text,
+                );
                 if (error != null) {
                   setDialogState(() => validationError = error);
                 } else {
                   Navigator.pop(context, nameController.text);
                 }
               },
-              style: ElevatedButton.styleFrom(backgroundColor: WantrTheme.brass),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: WantrTheme.brass,
+              ),
               child: Text(
                 'Found',
                 style: GoogleFonts.crimsonPro(color: WantrTheme.background),
@@ -768,13 +770,19 @@ class _AccountScreenState extends State<AccountScreen> {
             }
             break;
           case 'not_found':
-            setState(() => _error = 'No expedition found with that charter code.');
+            setState(
+              () => _error = 'No expedition found with that charter code.',
+            );
             break;
           case 'full':
-            setState(() => _error = 'This expedition is full (max 3 explorers).');
+            setState(
+              () => _error = 'This expedition is full (max 3 explorers).',
+            );
             break;
           default:
-            setState(() => _error = 'Could not join expedition. Please try again.');
+            setState(
+              () => _error = 'Could not join expedition. Please try again.',
+            );
         }
       } finally {
         if (mounted) setState(() => _isTeamOperationInProgress = false);
@@ -844,10 +852,7 @@ class _ExplorerProfileCard extends StatelessWidget {
                   padding: const EdgeInsets.all(4),
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
-                    border: Border.all(
-                      color: WantrTheme.brass,
-                      width: 2,
-                    ),
+                    border: Border.all(color: WantrTheme.brass, width: 2),
                     boxShadow: [
                       BoxShadow(
                         color: WantrTheme.brass.withOpacity(0.3),
@@ -861,14 +866,15 @@ class _ExplorerProfileCard extends StatelessWidget {
                     backgroundColor: isAnonymous
                         ? WantrTheme.streetTeamGreen
                         : WantrTheme.brass,
-                    backgroundImage:
-                        user?.photoURL != null ? NetworkImage(user!.photoURL!) : null,
+                    backgroundImage: user?.photoURL != null
+                        ? NetworkImage(user!.photoURL!)
+                        : null,
                     child: user?.photoURL == null
                         ? Icon(
                             isLoggedIn
                                 ? (isAnonymous
-                                    ? Icons.person_outline
-                                    : Icons.person)
+                                      ? Icons.person_outline
+                                      : Icons.person)
                                 : Icons.person_outline,
                             size: 40,
                             color: WantrTheme.background,
@@ -981,10 +987,7 @@ class _ExplorerProfileCard extends StatelessWidget {
                   OutlinedButton.icon(
                     onPressed: onSignOut,
                     icon: const Icon(Icons.logout, size: 18),
-                    label: Text(
-                      'Sign Out',
-                      style: GoogleFonts.crimsonPro(),
-                    ),
+                    label: Text('Sign Out', style: GoogleFonts.crimsonPro()),
                     style: OutlinedButton.styleFrom(
                       foregroundColor: WantrTheme.textSecondary,
                       side: BorderSide(color: WantrTheme.textMuted),
@@ -1127,8 +1130,11 @@ class _ExpeditionPartyCard extends StatelessWidget {
             const SizedBox(height: 12),
             Row(
               children: [
-                Icon(Icons.vpn_key_outlined,
-                    size: 16, color: WantrTheme.textMuted),
+                Icon(
+                  Icons.vpn_key_outlined,
+                  size: 16,
+                  color: WantrTheme.textMuted,
+                ),
                 const SizedBox(width: 6),
                 Text(
                   'Charter Code: ',
@@ -1159,7 +1165,10 @@ class _ExpeditionPartyCard extends StatelessWidget {
                       }
                     },
                     child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 6,
+                        vertical: 2,
+                      ),
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
@@ -1211,7 +1220,10 @@ class _ExpeditionPartyCard extends StatelessWidget {
                 if ((teamData!['members'] as List?)?.length == 3) ...[
                   const SizedBox(width: 8),
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 6,
+                      vertical: 2,
+                    ),
                     decoration: BoxDecoration(
                       color: WantrTheme.error.withOpacity(0.15),
                       borderRadius: BorderRadius.circular(4),
@@ -1296,7 +1308,9 @@ class _ExpeditionPartyCard extends StatelessWidget {
                         )
                       : Text(
                           'Leave',
-                          style: GoogleFonts.crimsonPro(color: WantrTheme.error),
+                          style: GoogleFonts.crimsonPro(
+                            color: WantrTheme.error,
+                          ),
                         ),
                 ),
               ],
@@ -1323,8 +1337,11 @@ class _ExpeditionPartyCard extends StatelessWidget {
             // Leaderboard
             Row(
               children: [
-                Icon(Icons.leaderboard_outlined,
-                    size: 16, color: WantrTheme.brass),
+                Icon(
+                  Icons.leaderboard_outlined,
+                  size: 16,
+                  color: WantrTheme.brass,
+                ),
                 const SizedBox(width: 8),
                 Text(
                   'RANKINGS',
@@ -1374,7 +1391,9 @@ class _ExpeditionPartyCard extends StatelessWidget {
                     return Container(
                       margin: const EdgeInsets.only(bottom: 8),
                       padding: const EdgeInsets.symmetric(
-                          horizontal: 12, vertical: 10),
+                        horizontal: 12,
+                        vertical: 10,
+                      ),
                       decoration: BoxDecoration(
                         color: isMe
                             ? WantrTheme.brass.withOpacity(0.1)
@@ -1382,7 +1401,8 @@ class _ExpeditionPartyCard extends StatelessWidget {
                         borderRadius: BorderRadius.circular(10),
                         border: isMe
                             ? Border.all(
-                                color: WantrTheme.brass.withOpacity(0.4))
+                                color: WantrTheme.brass.withOpacity(0.4),
+                              )
                             : null,
                       ),
                       child: Row(
@@ -1394,19 +1414,19 @@ class _ExpeditionPartyCard extends StatelessWidget {
                               rank == 1
                                   ? '1st'
                                   : rank == 2
-                                      ? '2nd'
-                                      : rank == 3
-                                          ? '3rd'
-                                          : '#$rank',
+                                  ? '2nd'
+                                  : rank == 3
+                                  ? '3rd'
+                                  : '#$rank',
                               style: GoogleFonts.cormorant(
                                 fontWeight: FontWeight.bold,
                                 color: rank == 1
                                     ? WantrTheme.gold
                                     : rank == 2
-                                        ? WantrTheme.textSecondary
-                                        : rank == 3
-                                            ? WantrTheme.copper
-                                            : WantrTheme.textMuted,
+                                    ? WantrTheme.textSecondary
+                                    : rank == 3
+                                    ? WantrTheme.copper
+                                    : WantrTheme.textMuted,
                                 fontSize: 14,
                               ),
                             ),
@@ -1429,8 +1449,11 @@ class _ExpeditionPartyCard extends StatelessWidget {
                                   ? NetworkImage(member['photoUrl'])
                                   : null,
                               child: member['photoUrl'] == null
-                                  ? const Icon(Icons.person,
-                                      size: 12, color: WantrTheme.background)
+                                  ? const Icon(
+                                      Icons.person,
+                                      size: 12,
+                                      color: WantrTheme.background,
+                                    )
                                   : null,
                             ),
                           ),
@@ -1447,8 +1470,9 @@ class _ExpeditionPartyCard extends StatelessWidget {
                                       color: isMe
                                           ? WantrTheme.brass
                                           : WantrTheme.textPrimary,
-                                      fontWeight:
-                                          isMe ? FontWeight.w600 : FontWeight.normal,
+                                      fontWeight: isMe
+                                          ? FontWeight.w600
+                                          : FontWeight.normal,
                                     ),
                                     overflow: TextOverflow.ellipsis,
                                   ),
@@ -1463,7 +1487,8 @@ class _ExpeditionPartyCard extends StatelessWidget {
                                     ),
                                   ),
                                 ],
-                                if (member['userId'] == teamData?['leaderId']) ...[
+                                if (member['userId'] ==
+                                    teamData?['leaderId']) ...[
                                   const SizedBox(width: 4),
                                   Icon(
                                     Icons.star,
@@ -1514,11 +1539,16 @@ class _ExpeditionPartyCard extends StatelessWidget {
                               ),
                               onSelected: (value) {
                                 final memberId = member['userId'] as String;
-                                final memberName = member['displayName'] as String? ?? 'Unknown';
+                                final memberName =
+                                    member['displayName'] as String? ??
+                                    'Unknown';
                                 if (value == 'kick') {
                                   onKickMember?.call(memberId, memberName);
                                 } else if (value == 'transfer') {
-                                  onTransferLeadership?.call(memberId, memberName);
+                                  onTransferLeadership?.call(
+                                    memberId,
+                                    memberName,
+                                  );
                                 }
                               },
                               itemBuilder: (context) => [
@@ -1526,8 +1556,11 @@ class _ExpeditionPartyCard extends StatelessWidget {
                                   value: 'transfer',
                                   child: Row(
                                     children: [
-                                      Icon(Icons.star_outline,
-                                          size: 16, color: WantrTheme.brass),
+                                      Icon(
+                                        Icons.star_outline,
+                                        size: 16,
+                                        color: WantrTheme.brass,
+                                      ),
                                       const SizedBox(width: 8),
                                       Text(
                                         'Make Leader',
@@ -1542,8 +1575,11 @@ class _ExpeditionPartyCard extends StatelessWidget {
                                   value: 'kick',
                                   child: Row(
                                     children: [
-                                      Icon(Icons.person_remove_outlined,
-                                          size: 16, color: WantrTheme.error),
+                                      Icon(
+                                        Icons.person_remove_outlined,
+                                        size: 16,
+                                        color: WantrTheme.error,
+                                      ),
                                       const SizedBox(width: 8),
                                       Text(
                                         'Remove',
@@ -1612,10 +1648,10 @@ class _ExpeditionPartyCard extends StatelessWidget {
                         'Join Party',
                         style: GoogleFonts.crimsonPro(),
                       ),
+                    ),
                   ),
-                ),
-              ],
-            ),
+                ],
+              ),
           ],
         ],
       ),
@@ -1774,8 +1810,9 @@ class _SettingsCardState extends State<_SettingsCard> {
                         textAlign: TextAlign.center,
                         style: GoogleFonts.crimsonPro(
                           fontSize: 13,
-                          fontWeight:
-                              isSelected ? FontWeight.w600 : FontWeight.normal,
+                          fontWeight: isSelected
+                              ? FontWeight.w600
+                              : FontWeight.normal,
                           color: isSelected
                               ? WantrTheme.background
                               : WantrTheme.textSecondary,
@@ -1848,7 +1885,7 @@ class _SettingsCardState extends State<_SettingsCard> {
                   await box.put('settings', settings);
                   setState(() {});
                 },
-                activeColor: WantrTheme.brass,
+                activeThumbColor: WantrTheme.brass,
               ),
             ],
           ),
@@ -1866,19 +1903,12 @@ class _GuestInfoCard extends StatelessWidget {
       decoration: BoxDecoration(
         gradient: WantrTheme.cardGradient,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: WantrTheme.brass.withOpacity(0.3),
-          width: 1,
-        ),
+        border: Border.all(color: WantrTheme.brass.withOpacity(0.3), width: 1),
       ),
       padding: const EdgeInsets.all(24),
       child: Column(
         children: [
-          Icon(
-            Icons.info_outline,
-            color: WantrTheme.brass,
-            size: 32,
-          ),
+          Icon(Icons.info_outline, color: WantrTheme.brass, size: 32),
           const SizedBox(height: 12),
           Text(
             'Exploring without charter',

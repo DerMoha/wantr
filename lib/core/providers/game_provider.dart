@@ -21,14 +21,18 @@ class GameProvider extends ChangeNotifier {
   final LocationService _locationService = LocationService();
   final OsmStreetService _osmService = OsmStreetService();
   final AuthService _authService = AuthService();
-  final TrackingNotificationService _notificationService = TrackingNotificationService();
-  late final CloudSyncService _cloudSyncService = CloudSyncService(_authService);
-  
+  final TrackingNotificationService _notificationService =
+      TrackingNotificationService();
+  late final CloudSyncService _cloudSyncService = CloudSyncService(
+    _authService,
+  );
+
   GameState? _gameState;
-  final List<DiscoveredStreet> _discoveredStreets = []; // Legacy, kept for compatibility
+  final List<DiscoveredStreet> _discoveredStreets =
+      []; // Legacy, kept for compatibility
   final List<RevealedSegment> _revealedSegments = [];
   final List<Outpost> _outposts = [];
-  
+
   // Hive boxes
   Box<GameState>? _gameStateBox;
   Box<DiscoveredStreet>? _streetBox;
@@ -37,33 +41,36 @@ class GameProvider extends ChangeNotifier {
 
   // Location tracking
   StreamSubscription? _locationSubscription;
-  StreamSubscription? _teamSegmentsSubscription; // New subscription for real-time team sync
+  StreamSubscription?
+  _teamSegmentsSubscription; // New subscription for real-time team sync
   LatLng? _currentLocation;
   final List<LatLng> _currentWalkPath = [];
 
   // Speed tracking for reward scaling
   DateTime? _lastLocationTimestamp;
   double _currentSpeedKmh = 0.0;
-  
+
   // Buffering for cloud sync
   final List<RevealedSegment> _segmentSyncBuffer = [];
   Timer? _segmentSyncTimer;
   static const Duration _segmentSyncDebounce = Duration(seconds: 5);
-  
+
   // OSM loading state
   bool _isLoadingStreets = false;
   String? _osmError;
 
   bool _isInitialized = false;
+  Future<void>? _initializationFuture;
 
   // Throttling for notifyListeners (max 2x per second)
   DateTime? _lastNotifyTime;
   bool _notifyPending = false;
   static const Duration _notifyThrottleDuration = Duration(milliseconds: 500);
-  
+
   // Auto-fetch OSM when user moves far
   LatLng? _lastOsmFetchLocation;
-  static const double _osmRefetchDistanceKm = 1.0; // Refetch when moved 1km from last fetch
+  static const double _osmRefetchDistanceKm =
+      1.0; // Refetch when moved 1km from last fetch
 
   // Constants
   static const double _minDistanceForNewPoint = 15.0; // meters
@@ -71,8 +78,9 @@ class GameProvider extends ChangeNotifier {
   static const double _revealRadius = 15.0; // meters - fog of war reveal radius
 
   // Speed thresholds for reward scaling (km/h)
-  static const double _walkingSpeedMax = 8.0;   // Full rewards below this
-  static const double _vehicleSpeedMax = 25.0;  // Reduced rewards below this, none above
+  static const double _walkingSpeedMax = 8.0; // Full rewards below this
+  static const double _vehicleSpeedMax =
+      25.0; // Reduced rewards below this, none above
 
   /// Whether the provider has finished its initial load
   bool get isInitialized => _isInitialized;
@@ -81,11 +89,13 @@ class GameProvider extends ChangeNotifier {
   GameState? get gameState => _gameState;
 
   /// All revealed segments (for fog of war display)
-  List<RevealedSegment> get revealedSegments => List.unmodifiable(_revealedSegments);
+  List<RevealedSegment> get revealedSegments =>
+      List.unmodifiable(_revealedSegments);
 
   /// All discovered streets (legacy, for compatibility)
-  List<DiscoveredStreet> get discoveredStreets => List.unmodifiable(_discoveredStreets);
-  
+  List<DiscoveredStreet> get discoveredStreets =>
+      List.unmodifiable(_discoveredStreets);
+
   /// All outposts
   List<Outpost> get outposts => List.unmodifiable(_outposts);
 
@@ -117,7 +127,7 @@ class GameProvider extends ChangeNotifier {
   int get outpostsWithResourcesCount {
     return _outposts.where((o) => o.hasResourcesToCollect).length;
   }
-  
+
   /// Current location
   LatLng? get currentLocation => _currentLocation;
 
@@ -140,16 +150,16 @@ class GameProvider extends ChangeNotifier {
     if (_currentSpeedKmh < _vehicleSpeedMax) return 0.5;
     return 0.0;
   }
-  
+
   /// OSM street service for direct access
   OsmStreetService get osmService => _osmService;
-  
+
   /// Whether OSM streets are loading
   bool get isLoadingStreets => _isLoadingStreets;
-  
+
   /// Any OSM loading error
   String? get osmError => _osmError;
-  
+
   /// Auth service for login state
   AuthService get authService => _authService;
 
@@ -157,62 +167,84 @@ class GameProvider extends ChangeNotifier {
   CloudSyncService get cloudSyncService => _cloudSyncService;
 
   /// Initialize the game provider
-  Future<void> initialize() async {
-    if (_isInitialized) return;
-    _isInitialized = true; // Mark as initializing immediately to prevent race conditions
+  Future<void> initialize() {
+    if (_isInitialized) {
+      return Future.value();
+    }
+    if (_initializationFuture != null) {
+      return _initializationFuture!;
+    }
+    _initializationFuture = _initializeInternal();
+    return _initializationFuture!;
+  }
 
-    await Hive.initFlutter();
+  Future<void> _initializeInternal() async {
+    try {
+      await Hive.initFlutter();
 
-    // Initialize cloud sync service (loads persisted pending queue)
-    await _cloudSyncService.initialize();
+      // Initialize cloud sync service (loads persisted pending queue)
+      await _cloudSyncService.initialize();
 
-    // Initialize notification service
-    await _notificationService.initialize();
-    
-    // Register Hive adapters
-    registerHiveAdapters();
-    
-    // Open boxes (will create if not exists)
-    _gameStateBox = await Hive.openBox<GameState>('game_state');
-    _streetBox = await Hive.openBox<DiscoveredStreet>('discovered_streets');
-    _segmentBox = await Hive.openBox<RevealedSegment>('revealed_segments');
-    _outpostBox = await Hive.openBox<Outpost>('outposts');
+      // Initialize notification service
+      await _notificationService.initialize();
 
-    // Load or create game state
-    if (_gameStateBox!.isEmpty) {
-      _gameState = GameState(
-        playerId: const Uuid().v4(),
-        playerName: 'Wanderer',
+      // Register Hive adapters
+      registerHiveAdapters();
+
+      // Open boxes (will create if not exists)
+      _gameStateBox = await Hive.openBox<GameState>('game_state');
+      _streetBox = await Hive.openBox<DiscoveredStreet>('discovered_streets');
+      _segmentBox = await Hive.openBox<RevealedSegment>('revealed_segments');
+      _outpostBox = await Hive.openBox<Outpost>('outposts');
+
+      // Load or create game state
+      if (_gameStateBox!.isEmpty) {
+        _gameState = GameState(
+          playerId: const Uuid().v4(),
+          playerName: 'Wanderer',
+        );
+        await _gameStateBox!.put('current', _gameState!);
+      } else {
+        _gameState = _gameStateBox!.get('current');
+      }
+
+      // Initialize OSM service (in background to speed up startup)
+      _osmService.initialize().catchError(
+        (e) => debugPrint('❌ OSM init error: $e'),
       );
-      await _gameStateBox!.put('current', _gameState!);
-    } else {
-      _gameState = _gameStateBox!.get('current');
+
+      // Populate AuthService cache from persisted GameState
+      if (_gameState?.teamId != null) {
+        _authService.updateCachedTeamId(_gameState!.teamId);
+      }
+
+      // Load discovered streets (legacy)
+      _discoveredStreets
+        ..clear()
+        ..addAll(_streetBox!.values);
+
+      // Load revealed segments from local storage
+      _revealedSegments
+        ..clear()
+        ..addAll(_segmentBox!.values);
+      debugPrint(
+        '📍 Loaded ${_revealedSegments.length} local revealed segments',
+      );
+
+      // Load outposts
+      _outposts
+        ..clear()
+        ..addAll(_outpostBox!.values);
+
+      // Finalize initialization
+      _isInitialized = true;
+      notifyListeners();
+
+      // Background tasks that don't need to block UI
+      _backgroundLoading();
+    } finally {
+      _initializationFuture = null;
     }
-
-    // Initialize OSM service (in background to speed up startup)
-    _osmService.initialize().catchError((e) => debugPrint('❌ OSM init error: $e'));
-
-    // Populate AuthService cache from persisted GameState
-    if (_gameState?.teamId != null) {
-      _authService.updateCachedTeamId(_gameState!.teamId);
-    }
-
-    // Load discovered streets (legacy)
-    _discoveredStreets.addAll(_streetBox!.values);
-    
-    // Load revealed segments from local storage
-    _revealedSegments.addAll(_segmentBox!.values);
-    debugPrint('📍 Loaded ${_revealedSegments.length} local revealed segments');
-    
-    // Load outposts
-    _outposts.addAll(_outpostBox!.values);
-
-    // Finalize initialization
-    _isInitialized = true;
-    notifyListeners();
-
-    // Background tasks that don't need to block UI
-    _backgroundLoading();
   }
 
   /// Non-blocking background loading tasks
@@ -248,18 +280,20 @@ class GameProvider extends ChangeNotifier {
     try {
       // Fetch all team segments (no date filter)
       final teamSegments = await _cloudSyncService.getTeamRevealedSegments();
-      
+
       if (teamSegments.isEmpty) {
         debugPrint('☁️ No team segments to sync');
         return;
       }
-      
+
       int addedCount = 0;
       int updatedCount = 0;
-      
+
       for (final teamSegment in teamSegments) {
-        final existingIndex = _revealedSegments.indexWhere((s) => s.id == teamSegment.id);
-        
+        final existingIndex = _revealedSegments.indexWhere(
+          (s) => s.id == teamSegment.id,
+        );
+
         if (existingIndex == -1) {
           // New segment from team - add it
           _revealedSegments.add(teamSegment);
@@ -268,7 +302,7 @@ class GameProvider extends ChangeNotifier {
         } else {
           // Segment exists locally - check if team version is newer or different
           final existing = _revealedSegments[existingIndex];
-          
+
           // If team segment has more walks, update ours
           if (teamSegment.timesWalked > existing.timesWalked) {
             existing.timesWalked = teamSegment.timesWalked;
@@ -277,9 +311,11 @@ class GameProvider extends ChangeNotifier {
           }
         }
       }
-      
+
       if (addedCount > 0 || updatedCount > 0) {
-        debugPrint('☁️ Team sync: $addedCount new segments, $updatedCount updated');
+        debugPrint(
+          '☁️ Team sync: $addedCount new segments, $updatedCount updated',
+        );
         notifyListeners();
       }
     } catch (e) {
@@ -343,58 +379,74 @@ class GameProvider extends ChangeNotifier {
   /// Start real-time listener for team discoveries
   void _startTeamSegmentsStream(String? teamId, {DateTime? lastSyncAt}) {
     if (teamId == null) return;
-    
+
     _teamSegmentsSubscription?.cancel();
-    _teamSegmentsSubscription = _cloudSyncService.teamSegmentsStream(
-      teamId, 
-      lastSyncAt: lastSyncAt
-    ).listen((teamSegments) async {
-      if (teamSegments.isEmpty) return;
+    _teamSegmentsSubscription = _cloudSyncService
+        .teamSegmentsStream(teamId, lastSyncAt: lastSyncAt)
+        .listen((teamSegments) async {
+          if (teamSegments.isEmpty) return;
 
-      int addedCount = 0;
+          int addedCount = 0;
 
-      for (final teamSegment in teamSegments) {
-        final existingIndex = _revealedSegments.indexWhere((s) => s.id == teamSegment.id);
-        
-        if (existingIndex == -1) {
-          // New segment from team - add it
-          _revealedSegments.add(teamSegment);
-          await _segmentBox!.put(teamSegment.id, teamSegment);
-          addedCount++;
-        }
-      }
-      
-      if (addedCount > 0) {
-        debugPrint('☁️ Synced $addedCount new team segments in real-time');
-        notifyListeners();
-      }
+          for (final teamSegment in teamSegments) {
+            final existingIndex = _revealedSegments.indexWhere(
+              (s) => s.id == teamSegment.id,
+            );
 
-      // Update sync timestamp to now (to catch only future updates)
-      if (_gameState != null) {
-        _gameState!.lastTeamSyncAt = DateTime.now();
-        await _saveGameState();
-      }
-    });
+            if (existingIndex == -1) {
+              // New segment from team - add it
+              _revealedSegments.add(teamSegment);
+              await _segmentBox!.put(teamSegment.id, teamSegment);
+              addedCount++;
+            }
+          }
+
+          if (addedCount > 0) {
+            debugPrint('☁️ Synced $addedCount new team segments in real-time');
+            notifyListeners();
+          }
+
+          // Update sync timestamp to now (to catch only future updates)
+          if (_gameState != null) {
+            _gameState!.lastTeamSyncAt = DateTime.now();
+            await _saveGameState();
+          }
+        });
   }
 
   /// Start location tracking
   Future<void> startTracking() async {
+    if (!_isInitialized) {
+      await initialize();
+    }
+
+    // If this provider is already subscribed, keep the existing stream listener.
+    if (_locationSubscription != null) {
+      _currentLocation ??= await _locationService.getCurrentLocation();
+      if (_currentLocation != null && _osmService.cachedStreets.isEmpty) {
+        await _fetchStreetsForArea(_currentLocation!);
+        _lastOsmFetchLocation = _currentLocation;
+      }
+      notifyListeners();
+      return;
+    }
+
     // Load GPS settings
     final settingsBox = await Hive.openBox<dynamic>('app_settings');
     final settings = settingsBox.get('settings');
-    
+
     int distanceFilter = 10;
     Duration interval = const Duration(seconds: 5);
     bool isBatterySaver = true; // Default to battery saver
-    
+
     if (settings != null) {
       // Get settings values based on mode index
       final gpsModeIndex = settings.gpsModeIndex ?? 0;
       isBatterySaver = gpsModeIndex == 0; // 0 = batterySaver mode
-      
+
       distanceFilter = switch (gpsModeIndex) {
-        1 => 5,  // balanced
-        2 => 3,  // highAccuracy
+        1 => 5, // balanced
+        2 => 3, // highAccuracy
         _ => 10, // batterySaver
       };
       interval = switch (gpsModeIndex) {
@@ -403,39 +455,48 @@ class GameProvider extends ChangeNotifier {
         _ => const Duration(seconds: 5),
       };
     }
-    
-    await _locationService.startTracking(
-      distanceFilter: distanceFilter,
-      interval: interval,
-      batterySaverMode: isBatterySaver,
-    );
-    
-    // Start the live tracking notification
-    await _notificationService.startTracking();
-    
-    _locationSubscription = _locationService.locationStream.listen((location) {
-      _handleLocationUpdate(location);
-    });
+
+    final wasTracking = _locationService.isTracking;
+
+    if (!wasTracking) {
+      await _locationService.startTracking(
+        distanceFilter: distanceFilter,
+        interval: interval,
+        batterySaverMode: isBatterySaver,
+      );
+
+      // Start the live tracking notification only for a new session.
+      if (_locationService.isTracking) {
+        await _notificationService.startTracking();
+      }
+    }
+
+    if (_locationService.isTracking) {
+      _locationSubscription = _locationService.locationStream.listen(
+        _handleLocationUpdate,
+      );
+    }
 
     // Get initial location
-    _currentLocation = await _locationService.getCurrentLocation();
-    
-    // Fetch OSM streets for area
-    if (_currentLocation != null) {
+    _currentLocation ??= await _locationService.getCurrentLocation();
+
+    // Fetch OSM streets for area if cache is empty
+    if (_currentLocation != null && _osmService.cachedStreets.isEmpty) {
       await _fetchStreetsForArea(_currentLocation!);
+      _lastOsmFetchLocation = _currentLocation;
     }
-    
+
     notifyListeners();
   }
-  
+
   /// Fetch OSM street data for an area
   Future<void> _fetchStreetsForArea(LatLng center) async {
     if (_isLoadingStreets) return;
-    
+
     _isLoadingStreets = true;
     _osmError = null;
     notifyListeners();
-    
+
     try {
       await _osmService.fetchStreetsForArea(center, _streetFetchRadiusKm);
       debugPrint('📍 Loaded ${_osmService.cachedStreets.length} OSM streets');
@@ -453,10 +514,10 @@ class GameProvider extends ChangeNotifier {
     _locationService.stopTracking();
     _locationSubscription?.cancel();
     _locationSubscription = null;
-    
+
     // Stop the live tracking notification
     await _notificationService.stopTracking();
-    
+
     notifyListeners();
   }
 
@@ -475,7 +536,8 @@ class GameProvider extends ChangeNotifier {
         previousLocation,
         newLocation,
       );
-      final timeDiffSeconds = now.difference(previousTimestamp).inMilliseconds / 1000.0;
+      final timeDiffSeconds =
+          now.difference(previousTimestamp).inMilliseconds / 1000.0;
 
       if (timeDiffSeconds > 0) {
         final speedMps = distance / timeDiffSeconds;
@@ -509,24 +571,24 @@ class GameProvider extends ChangeNotifier {
     } else {
       _currentWalkPath.add(newLocation);
     }
-    
+
     // Auto-fetch OSM data if we've moved far from last fetch location
     _checkAndRefetchOsmData(newLocation);
 
     _throttledNotifyListeners();
   }
-  
+
   /// Throttled version of notifyListeners to prevent UI jank
   void _throttledNotifyListeners() {
     final now = DateTime.now();
-    
-    if (_lastNotifyTime == null || 
+
+    if (_lastNotifyTime == null ||
         now.difference(_lastNotifyTime!) >= _notifyThrottleDuration) {
       _lastNotifyTime = now;
       notifyListeners();
       return;
     }
-    
+
     // Schedule a delayed notify if not already pending
     if (!_notifyPending) {
       _notifyPending = true;
@@ -537,21 +599,25 @@ class GameProvider extends ChangeNotifier {
       });
     }
   }
-  
+
   /// Check if we need to refetch OSM data (moved far from last fetch)
   void _checkAndRefetchOsmData(LatLng currentLocation) {
     if (_lastOsmFetchLocation == null) {
       _lastOsmFetchLocation = currentLocation;
       return;
     }
-    
-    final distanceFromLastFetch = _locationService.calculateDistance(
-      _lastOsmFetchLocation!,
-      currentLocation,
-    ) / 1000; // Convert to km
-    
+
+    final distanceFromLastFetch =
+        _locationService.calculateDistance(
+          _lastOsmFetchLocation!,
+          currentLocation,
+        ) /
+        1000; // Convert to km
+
     if (distanceFromLastFetch >= _osmRefetchDistanceKm) {
-      debugPrint('📍 Moved ${distanceFromLastFetch.toStringAsFixed(1)}km, refetching OSM data...');
+      debugPrint(
+        '📍 Moved ${distanceFromLastFetch.toStringAsFixed(1)}km, refetching OSM data...',
+      );
       _fetchStreetsForArea(currentLocation);
       _lastOsmFetchLocation = currentLocation;
     }
@@ -560,24 +626,30 @@ class GameProvider extends ChangeNotifier {
   /// Reveal street segments within 30m radius of current location
   void _checkStreetDiscovery(LatLng location) {
     int newSegments = 0;
-    
+
     // Check all cached OSM streets
     for (final osmStreet in _osmService.cachedStreets) {
       // Walk through each segment of the street
       for (int i = 0; i < osmStreet.points.length - 1; i++) {
         final segmentStart = osmStreet.points[i];
         final segmentEnd = osmStreet.points[i + 1];
-        
+
         // Check if user is within reveal radius of this segment
-        final distanceToSegment = _pointToSegmentDistance(location, segmentStart, segmentEnd);
-        
+        final distanceToSegment = _pointToSegmentDistance(
+          location,
+          segmentStart,
+          segmentEnd,
+        );
+
         if (distanceToSegment <= _revealRadius) {
           // This segment should be revealed!
           final segmentId = '${osmStreet.id}_$i';
-          
+
           // Check if already revealed
-          final existing = _revealedSegments.where((s) => s.id == segmentId).firstOrNull;
-          
+          final existing = _revealedSegments
+              .where((s) => s.id == segmentId)
+              .firstOrNull;
+
           if (existing != null) {
             // Already revealed, increment walk count
             existing.recordWalk();
@@ -593,23 +665,25 @@ class GameProvider extends ChangeNotifier {
               endLat: segmentEnd.latitude,
               endLng: segmentEnd.longitude,
             );
-            
+
             _revealedSegments.add(segment);
             _segmentBox?.add(segment);
             newSegments++;
-            
+
             // Sync to team cloud (if logged in and in a team)
             _syncSegmentToCloud(segment);
           }
         }
       }
     }
-    
+
     // Award XP for new segments discovered (scaled by speed)
     if (newSegments > 0) {
       final multiplier = _rewardMultiplier;
-      final xpGain = (newSegments * 5 * multiplier).round(); // 5 XP per segment, scaled
-      final dpGain = (newSegments * multiplier).round(); // Discovery points, scaled
+      final xpGain = (newSegments * 5 * multiplier)
+          .round(); // 5 XP per segment, scaled
+      final dpGain = (newSegments * multiplier)
+          .round(); // Discovery points, scaled
 
       if (xpGain > 0) {
         _gameState?.addXp(xpGain);
@@ -620,71 +694,79 @@ class GameProvider extends ChangeNotifier {
 
       // Log with speed info
       if (multiplier < 1.0) {
-        debugPrint('🗺️ Revealed $newSegments segments at ${_currentSpeedKmh.toStringAsFixed(1)} km/h '
-            '(${(multiplier * 100).round()}% rewards: +$xpGain XP, +$dpGain DP)');
+        debugPrint(
+          '🗺️ Revealed $newSegments segments at ${_currentSpeedKmh.toStringAsFixed(1)} km/h '
+          '(${(multiplier * 100).round()}% rewards: +$xpGain XP, +$dpGain DP)',
+        );
       } else {
-        debugPrint('🗺️ Revealed $newSegments new segments! Total: ${_revealedSegments.length}');
+        debugPrint(
+          '🗺️ Revealed $newSegments new segments! Total: ${_revealedSegments.length}',
+        );
       }
 
       // Update live notification with streets discovered
       _notificationService.addStreets(newSegments);
     }
   }
-  
+
   /// Sync a segment to cloud (with debouncing)
   void _syncSegmentToCloud(RevealedSegment segment) {
     if (!_authService.isLoggedIn) return;
-    
+
     _segmentSyncBuffer.add(segment);
-    
+
     _segmentSyncTimer?.cancel();
     _segmentSyncTimer = Timer(_segmentSyncDebounce, () {
       _flushSegmentBuffer();
     });
   }
-  
+
   /// Push buffered segments to cloud
   Future<void> _flushSegmentBuffer() async {
     if (_segmentSyncBuffer.isEmpty) return;
-    
+
     final segments = List<RevealedSegment>.from(_segmentSyncBuffer);
     _segmentSyncBuffer.clear();
     _segmentSyncTimer?.cancel();
-    
+
     debugPrint('☁️ Flushing ${segments.length} segments to cloud...');
-    
+
     for (final segment in segments) {
       _cloudSyncService.syncRevealedSegment(segment).catchError((e) {
         debugPrint('☁️ Sync error for ${segment.id} (will retry): $e');
       });
     }
   }
-  
+
   /// Calculate distance from a point to a line segment
   double _pointToSegmentDistance(LatLng point, LatLng segStart, LatLng segEnd) {
     const distance = Distance();
-    
+
     final dx = segEnd.longitude - segStart.longitude;
     final dy = segEnd.latitude - segStart.latitude;
-    
+
     if (dx == 0 && dy == 0) {
       // Segment is a point
       return distance.as(LengthUnit.Meter, point, segStart);
     }
-    
+
     // Calculate projection parameter
-    final t = max(0.0, min(1.0,
-      ((point.longitude - segStart.longitude) * dx + 
-       (point.latitude - segStart.latitude) * dy) / 
-      (dx * dx + dy * dy)
-    ));
-    
+    final t = max(
+      0.0,
+      min(
+        1.0,
+        ((point.longitude - segStart.longitude) * dx +
+                (point.latitude - segStart.latitude) * dy) /
+            (dx * dx + dy * dy),
+      ),
+    );
+
     // Find closest point on segment
     final closestPoint = LatLng(
       segStart.latitude + t * dy,
       segStart.longitude + t * dx,
     );
-    
+
     return distance.as(LengthUnit.Meter, point, closestPoint);
   }
 
@@ -694,7 +776,7 @@ class GameProvider extends ChangeNotifier {
     required OutpostType type,
   }) async {
     if (_currentLocation == null) return false;
-    
+
     final cost = Outpost.getCost(type, 1);
     if (!(_gameState?.spendGold(cost) ?? false)) {
       return false; // Not enough gold
@@ -710,13 +792,13 @@ class GameProvider extends ChangeNotifier {
 
     _outposts.add(outpost);
     await _outpostBox?.add(outpost);
-    
+
     _gameState?.outpostsBuilt++;
     _gameState?.addXp(50); // XP for building
-    
+
     await _saveGameState();
     notifyListeners();
-    
+
     return true;
   }
 
@@ -727,16 +809,28 @@ class GameProvider extends ChangeNotifier {
 
     switch (outpost.type) {
       case OutpostType.tradingPost:
-        _gameState?.addTradeGoods(amount, capacity: getResourceCapacity('tradeGoods'));
+        _gameState?.addTradeGoods(
+          amount,
+          capacity: getResourceCapacity('tradeGoods'),
+        );
         break;
       case OutpostType.workshop:
-        _gameState?.addMaterials(amount, capacity: getResourceCapacity('materials'));
+        _gameState?.addMaterials(
+          amount,
+          capacity: getResourceCapacity('materials'),
+        );
         break;
       case OutpostType.inn:
-        _gameState?.energy = (_gameState!.energy + amount).clamp(0, GameState.baseEnergyCapacity);
+        _gameState?.energy = (_gameState!.energy + amount).clamp(
+          0,
+          GameState.baseEnergyCapacity,
+        );
         break;
       case OutpostType.bank:
-        _gameState?.addGoldCapped(amount, capacity: getResourceCapacity('gold'));
+        _gameState?.addGoldCapped(
+          amount,
+          capacity: getResourceCapacity('gold'),
+        );
         break;
       default:
         break;
@@ -795,19 +889,31 @@ class GameProvider extends ChangeNotifier {
 
       switch (outpost.type) {
         case OutpostType.tradingPost:
-          _gameState?.addTradeGoods(amount, capacity: getResourceCapacity('tradeGoods'));
+          _gameState?.addTradeGoods(
+            amount,
+            capacity: getResourceCapacity('tradeGoods'),
+          );
           totals['tradeGoods'] = totals['tradeGoods']! + amount;
           break;
         case OutpostType.workshop:
-          _gameState?.addMaterials(amount, capacity: getResourceCapacity('materials'));
+          _gameState?.addMaterials(
+            amount,
+            capacity: getResourceCapacity('materials'),
+          );
           totals['materials'] = totals['materials']! + amount;
           break;
         case OutpostType.inn:
-          _gameState?.energy = (_gameState!.energy + amount).clamp(0, GameState.baseEnergyCapacity);
+          _gameState?.energy = (_gameState!.energy + amount).clamp(
+            0,
+            GameState.baseEnergyCapacity,
+          );
           totals['energy'] = totals['energy']! + amount;
           break;
         case OutpostType.bank:
-          _gameState?.addGoldCapped(amount, capacity: getResourceCapacity('gold'));
+          _gameState?.addGoldCapped(
+            amount,
+            capacity: getResourceCapacity('gold'),
+          );
           totals['gold'] = totals['gold']! + amount;
           break;
         default:
